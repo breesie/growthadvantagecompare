@@ -1,6 +1,7 @@
 #calculate the growth advantage from the coefficients of two models
-library(mvtnorm)
+library(mnlpred)
 library(nnet)
+library(MASS)
 
 
 logspace <- function(clademod, pangomod)

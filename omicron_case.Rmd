@@ -8,25 +8,46 @@ output: html_document
 ```{r}
 library(readr)
 library(tidyverse)
-
+library(ggplot2)
 ```
 
 
 #read in clade and PANGO lineage counts accessed June 5th  
 ```{r}
 cladenum <- read_tsv("~/growthadvantagecompare/sequences_static/global-2.tsv")
+
 #https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/pango_lineages/global.tsv.gz
 
 pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv")
+
 #https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/nextstrain_clades/global.tsv.gz
 ```
 
 
+
+
 #Plot counts of BA.1 (Omicron 1) vs clade 21K in USA
 ```{r}
-cladenum %>% filter(location == "USA", clade == "21K") %>% group_by(date)
 
-pangonum %>% filter(location == "USA", clade == "BA.1") %>% group_by(date)
+#restrict data to first appearance of PANGO lineage (because clade is assigned after)
+
+usa_pBA1 <- pangonum %>% filter(location == "USA", clade == "BA.1") 
+
+mindate <- usa_pBA1 %>% summarize(min(date))
+
+usa_c21K <- cladenum %>% filter(location == "USA", clade == "21K") %>% 
+  filter(date < mindate)
+
+
+
+ggplot() + 
+  geom_col(data = usa_c21K, aes(x = date, y = sequences), color = "coral")+
+  geom_col(data = usa_pBA1, aes(x = date, y = sequences), color = "steelblue") + labs(title = paste0("Pango lineage"))
+  theme_minimal()
+
+
+
+
 
 
 
