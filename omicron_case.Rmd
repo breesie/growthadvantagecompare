@@ -1,0 +1,33 @@
+---
+title: "omicron_case"
+output: html_document
+---
+#Taking difference in growth rate in omicron (BA.1) vs its corresponding clade 
+#
+
+```{r}
+library(readr)
+library(tidyverse)
+
+```
+
+
+#read in clade and PANGO lineage counts accessed June 5th  
+```{r}
+cladenum <- read_tsv("~/growthadvantagecompare/sequences_static/global-2.tsv")
+#https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/pango_lineages/global.tsv.gz
+
+pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv")
+#https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/nextstrain_clades/global.tsv.gz
+```
+
+
+#Plot counts of BA.1 (Omicron 1) vs clade 21K in USA
+```{r}
+cladenum %>% filter(location == "USA", clade == "21K") %>% group_by(date)
+
+pangonum %>% filter(location == "USA", clade == "BA.1") %>% group_by(date)
+
+
+
+```
