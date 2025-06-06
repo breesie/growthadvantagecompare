@@ -14,41 +14,100 @@ library(ggplot2)
 
 #read in clade and PANGO lineage counts accessed June 5th  
 ```{r}
-cladenum <- read_tsv("~/growthadvantagecompare/sequences_static/global-2.tsv")
+cladenum <- read_tsv("~/growthadvantagecompare/sequences_static/global-2.tsv") %>% rename(variant = clade)
 
 #https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/pango_lineages/global.tsv.gz
 
-pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv")
+pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv") %>% rename(variant = clade)
 
 #https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/nextstrain_clades/global.tsv.gz
 ```
 
 
-
-
 #Plot counts of BA.1 (Omicron 1) vs clade 21K in USA
 ```{r}
+#restrict data to first appearance of clade (because clade is assigned when growth of pango lineage is high)
 
-#restrict data to first appearance of PANGO lineage (because clade is assigned after)
+usa_pBA1 <- pangonum %>% filter(location == "USA", variant == c("BA.1")) %>% mutate("Unit"= "Pangolin BA.1")
 
-usa_pBA1 <- pangonum %>% filter(location == "USA", clade == "BA.1") 
+usa_c21K <- cladenum %>% filter(location == "USA", variant == "21K")  %>% mutate("Unit"= "Clade 21K")
 
-mindate <- usa_pBA1 %>% summarize(min(date))
+mindate <- min(usa_c21K$date + 500) 
+maxdate <- mindate + 1000
 
-usa_c21K <- cladenum %>% filter(location == "USA", clade == "21K") %>% 
-  filter(date < mindate)
+usa_c21kpBa1 <- bind_rows(usa_c21K, usa_pBA1) %>% 
+  filter(date < maxdate & date > mindate)
 
 
+ggplot(usa_c21kpBa1, aes(x = date, y = sequences, fill = Unit)) + 
+  geom_col() +
+  labs(title = "Pango lineage and Clade Seq Volume") +
+  theme_minimal()
 
-ggplot() + 
-  geom_col(data = usa_c21K, aes(x = date, y = sequences), color = "coral")+
-  geom_col(data = usa_pBA1, aes(x = date, y = sequences), color = "steelblue") + labs(title = paste0("Pango lineage"))
+
+```
+#Plot all sequences volume by day (should be the same)
+```{r}
+#tot n per day
+
+cladefilttotn <- cladenum %>% filter(location == "USA",
+                    date < maxdate & date > mindate) %>% 
+  group_by(date) %>% summarise(totn = sum(sequences))%>% 
+  mutate("source" = "Clade")
+
+pangofilttotn <- pangonum %>% filter(location == "USA",
+                    date < maxdate & date > mindate) %>% 
+  group_by(date) %>% summarise(totn = sum(sequences)) %>% 
+  mutate("source" = "Pangolin")
+
+
+ggplot() +
+  geom_col(data = cladefilttotn %>% filter(source == "Clade"),
+           aes(x = date, y = totn, fill = source), alpha = 0.8) +
+  geom_line(data = pangofilttotn %>% filter(source == "Pangolin"),
+            aes(x = date, y = totn, color = source), size = 1.5, opacity = .3) +
+  scale_fill_manual(values = c("Clade" = "coral")) +
+  scale_color_manual(values = c("Pangolin" = "steelblue")) +
+  labs(
+    title = "Total Sequences by Unit Over Time (Ensure consistency)",
+    x = "Date",
+    y = "Total Sequences",
+    fill = "Source",
+    color = "Source"
+  ) +
+  theme_minimal()
+
+```
+#Plot proportions of clade and pangos in time frame
+```{r}
+
+cladefiltprops <- left_join(cladefilttotn, cladenum %>% filter(location == "USA", date < maxdate & date > mindate), by = "date") %>% 
+  mutate(cladeprop = sequences/totn)
+
+ggplot(data = cladefiltprops, aes(x = date, y = cladeprop, color = variant)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "Clade Proportions Over Time",
+    x = "Date",
+    y = "Proportion",
+    color = "Variant"
+  ) +
+  theme_minimal()
+
+pangofiltprops <- left_join(pangofilttotn, pangonum %>% filter(location == "USA", date < maxdate & date > mindate), by = "date") %>% 
+  mutate(pangoprop = sequences/totn)
+
+ggplot(data = pangofiltprops %>% filter(variant == c("BA.1", "BA.2", "BA.3")), aes(x = date, y = pangoprop, color = variant)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "Pango Proportions Over Time",
+    x = "Date",
+    y = "Proportion",
+    color = "Variant"
+  ) +
   theme_minimal()
 
 
 
-
-
-
-
 ```
+
