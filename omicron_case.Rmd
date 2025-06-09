@@ -33,7 +33,7 @@ usa_pBA1 <- pangonum %>% filter(location == "USA", variant == c("BA.1")) %>% mut
 usa_c21K <- cladenum %>% filter(location == "USA", variant == "21K")  %>% mutate("Unit"= "Clade 21K")
 
 mindate <- min(usa_c21K$date + 500) 
-maxdate <- mindate + 1000
+maxdate <- mindate + 730
 
 usa_c21kpBa1 <- bind_rows(usa_c21K, usa_pBA1) %>% 
   filter(date < maxdate & date > mindate)
@@ -50,21 +50,19 @@ ggplot(usa_c21kpBa1, aes(x = date, y = sequences, fill = Unit)) +
 ```{r}
 #tot n per day
 
-cladefilttotn <- cladenum %>% filter(location == "USA",
-                    date < maxdate & date > mindate) %>% 
+cladetotn_usa <- cladenum %>% filter(location == "USA") %>% 
   group_by(date) %>% summarise(totn = sum(sequences))%>% 
   mutate("source" = "Clade")
 
-pangofilttotn <- pangonum %>% filter(location == "USA",
-                    date < maxdate & date > mindate) %>% 
+pangototn_usa <- pangonum %>% filter(location == "USA") %>% 
   group_by(date) %>% summarise(totn = sum(sequences)) %>% 
   mutate("source" = "Pangolin")
 
 
 ggplot() +
-  geom_col(data = cladefilttotn %>% filter(source == "Clade"),
+  geom_col(data = cladetotn_usa %>% filter(source == "Clade"),
            aes(x = date, y = totn, fill = source), alpha = 0.8) +
-  geom_line(data = pangofilttotn %>% filter(source == "Pangolin"),
+  geom_line(data = pangototn_usa %>% filter(source == "Pangolin"),
             aes(x = date, y = totn, color = source), size = 1.5, opacity = .3) +
   scale_fill_manual(values = c("Clade" = "coral")) +
   scale_color_manual(values = c("Pangolin" = "steelblue")) +
@@ -81,10 +79,24 @@ ggplot() +
 #Plot proportions of clade and pangos in time frame
 ```{r}
 
-cladefiltprops <- left_join(cladefilttotn, cladenum %>% filter(location == "USA", date < maxdate & date > mindate), by = "date") %>% 
+#New max ad min date, filter to where first emerged pango prop above 30% and add a year 
+
+pangoprops_usa <- left_join(pangototn_usa, pangonum %>% filter(location == "USA"), by = "date") %>% 
+  mutate(pangoprop = sequences/totn)
+
+cladeprops_usa <- left_join(cladetotn_usa, cladenum %>% filter(location == "USA"), by = "date") %>% 
   mutate(cladeprop = sequences/totn)
 
-ggplot(data = cladefiltprops, aes(x = date, y = cladeprop, color = variant)) +
+t <- pangoprops %>% filter(variant == "BA.1" & pangoprop > .30) 
+
+# %>% 
+#   summarise(date = min(date)) %>% 
+#   pull(.)
+
+maxdate <- mindate + 365
+
+
+ggplot(data = cladeprops_usa %>% filter(variant == c("21K", "21L", "22A", "22B"), date > mindate & date < maxdate), aes(x = date, y = cladeprop, color = variant)) +
   geom_point(alpha = 0.7) +
   labs(
     title = "Clade Proportions Over Time",
@@ -94,10 +106,8 @@ ggplot(data = cladefiltprops, aes(x = date, y = cladeprop, color = variant)) +
   ) +
   theme_minimal()
 
-pangofiltprops <- left_join(pangofilttotn, pangonum %>% filter(location == "USA", date < maxdate & date > mindate), by = "date") %>% 
-  mutate(pangoprop = sequences/totn)
 
-ggplot(data = pangofiltprops %>% filter(variant == c("BA.1", "BA.2", "BA.3")), aes(x = date, y = pangoprop, color = variant)) +
+ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.4", "BA.5"), date > mindate & date < maxdate), aes(x = date, y = pangoprop, color = variant)) +
   geom_point(alpha = 0.7) +
   labs(
     title = "Pango Proportions Over Time",
@@ -108,6 +118,10 @@ ggplot(data = pangofiltprops %>% filter(variant == c("BA.1", "BA.2", "BA.3")), a
   theme_minimal()
 
 
+
+```
+
+```{r}
 
 ```
 
