@@ -96,7 +96,7 @@ mindate <- pangoprops_usa %>% filter(variant == "BA.1", pangoprop > .1) %>%
 summarise(date = min(date)) %>% 
 pull(.)
 
-maxdate <- mindate + 150
+maxdate <- mindate + 365
 
 
 ggplot(data = cladeprops_usa %>% filter(variant == c("21K", "21L", "22C"), date > mindate & date < maxdate), aes(x = date, y = cladeprop, color = variant)) +
@@ -109,7 +109,7 @@ ggplot(data = cladeprops_usa %>% filter(variant == c("21K", "21L", "22C"), date 
   ) +
   theme_minimal()
 
-
+#filtered
 ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.2.12.1"), date > mindate & date < maxdate), aes(x = date, y = pangoprop, color = variant)) +
   geom_point(alpha = 0.7) +
   labs(
@@ -122,54 +122,63 @@ ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.2.12.1"
 
 
 
-```
 
+
+```
+#For clades
 ```{r}
 
+set.seed(123)
+
 #make date an integer and ungroup observations, makes a lot of observations so slice at 50k
-mlr_cladeprops_usa <- cladeprops_usa %>% (date >= mindate & date <= maxdate) %>% 
-  mutate(time = as.integer(date - mindate))%>% 
-  # uncount(sequences) %>% 
-  # slice_sample(n = 10000)
+mlr_cladeprops_usa <- cladeprops_usa %>%
+  filter(date >= mindate & date <= maxdate) %>%
+  mutate(time = as.integer(date - mindate)) %>%
+  uncount(sequences) %>%
+  slice_sample(n = 80000)
 
 
-
+gc()
 
 mod1 <- multinom(variant ~ time,
                  data = mlr_cladeprops_usa,
                  Hess = TRUE,
-                 maxit = 100)
-
+                 maxit = 1000)
+gc()
 
 pred1 <- mnl_pred_ova(model = mod1,
                       data = mlr_cladeprops_usa,
                       x = "time",
                       by = 7,
                       seed = 123,
-                      nsim = 50, # faster
+                      nsim = 5, # faster
                       probs = c(0.025, 0.975)) # default
 
 
 
 
+pred1$plotdata <- pred1$plotdata %>%
+  mutate(date = mindate + time)
 
-library(ggplot2)
-library(dplyr)
 
-# Make sure 'variant' is treated as a factor
-df$variant <- as.factor(df$variant)
-
-# Plot
-ggplot(pred1$plotdata, aes(x = time, y = mean, color = variant, fill = variant)) +
-  geom_line(size = 1) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
+ggplot() +
+  geom_point(
+    data = cladeprops_usa %>% filter(date > mindate & date < maxdate),
+    aes(x = date, y = cladeprop, color = variant),
+    alpha = 0.6) +
+  geom_line(
+    data = pred1$plotdata %>% filter(date > mindate & date < maxdate),
+    aes(x = date, y = mean, color = variant),
+    size = 1
+  ) +
   labs(
-    title = "Variant Proportions Over Time with Confidence Intervals",
-    x = "Time",
+    title = "USA Clades Vs MLR Model Fit",
+    x = "Date",
     y = "Proportion"
   ) +
   theme_minimal() +
   theme(legend.title = element_blank())
+
 
 ```
 
