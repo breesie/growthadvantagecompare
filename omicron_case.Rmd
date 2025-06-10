@@ -9,6 +9,9 @@ output: html_document
 library(readr)
 library(tidyverse)
 library(ggplot2)
+library(nnet)
+library(MASS)
+library(MNLpred)
 ```
 
 
@@ -21,6 +24,8 @@ cladenum <- read_tsv("~/growthadvantagecompare/sequences_static/global-2.tsv") %
 pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv") %>% rename(variant = clade)
 
 #https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/nextstrain_clades/global.tsv.gz
+
+https://ncov-clades-schema.vercel.app
 ```
 
 
@@ -51,7 +56,7 @@ ggplot(usa_c21kpBa1, aes(x = date, y = sequences, fill = Unit)) +
 #tot n per day
 
 cladetotn_usa <- cladenum %>% filter(location == "USA") %>% 
-  group_by(date) %>% summarise(totn = sum(sequences))%>% 
+  group_by(date) %>% summarise(totn = sum(sequences)) %>% 
   mutate("source" = "Clade")
 
 pangototn_usa <- pangonum %>% filter(location == "USA") %>% 
@@ -79,7 +84,7 @@ ggplot() +
 #Plot proportions of clade and pangos in time frame
 ```{r}
 
-#New max ad min date, filter to where first emerged pango prop above 30% and add a year 
+#New max ad min date, filter to where first emerged pango (BA.1) prop above 5% and add a year 
 
 pangoprops_usa <- left_join(pangototn_usa, pangonum %>% filter(location == "USA"), by = "date") %>% 
   mutate(pangoprop = sequences/totn)
@@ -87,16 +92,14 @@ pangoprops_usa <- left_join(pangototn_usa, pangonum %>% filter(location == "USA"
 cladeprops_usa <- left_join(cladetotn_usa, cladenum %>% filter(location == "USA"), by = "date") %>% 
   mutate(cladeprop = sequences/totn)
 
-t <- pangoprops %>% filter(variant == "BA.1" & pangoprop > .30) 
+mindate <- pangoprops_usa %>% filter(variant == "BA.1", pangoprop > .1) %>% 
+summarise(date = min(date)) %>% 
+pull(.)
 
-# %>% 
-#   summarise(date = min(date)) %>% 
-#   pull(.)
-
-maxdate <- mindate + 365
+maxdate <- mindate + 150
 
 
-ggplot(data = cladeprops_usa %>% filter(variant == c("21K", "21L", "22A", "22B"), date > mindate & date < maxdate), aes(x = date, y = cladeprop, color = variant)) +
+ggplot(data = cladeprops_usa %>% filter(variant == c("21K", "21L", "22C"), date > mindate & date < maxdate), aes(x = date, y = cladeprop, color = variant)) +
   geom_point(alpha = 0.7) +
   labs(
     title = "Clade Proportions Over Time",
@@ -107,7 +110,7 @@ ggplot(data = cladeprops_usa %>% filter(variant == c("21K", "21L", "22A", "22B")
   theme_minimal()
 
 
-ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.4", "BA.5"), date > mindate & date < maxdate), aes(x = date, y = pangoprop, color = variant)) +
+ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.2.12.1"), date > mindate & date < maxdate), aes(x = date, y = pangoprop, color = variant)) +
   geom_point(alpha = 0.7) +
   labs(
     title = "Pango Proportions Over Time",
@@ -122,6 +125,51 @@ ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.4", "BA
 ```
 
 ```{r}
+
+#make date an integer and ungroup observations, makes a lot of observations so slice at 50k
+mlr_cladeprops_usa <- cladeprops_usa %>% (date >= mindate & date <= maxdate) %>% 
+  mutate(time = as.integer(date - mindate))%>% 
+  # uncount(sequences) %>% 
+  # slice_sample(n = 10000)
+
+
+
+
+mod1 <- multinom(variant ~ time,
+                 data = mlr_cladeprops_usa,
+                 Hess = TRUE,
+                 maxit = 100)
+
+
+pred1 <- mnl_pred_ova(model = mod1,
+                      data = mlr_cladeprops_usa,
+                      x = "time",
+                      by = 7,
+                      seed = 123,
+                      nsim = 50, # faster
+                      probs = c(0.025, 0.975)) # default
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+
+# Make sure 'variant' is treated as a factor
+df$variant <- as.factor(df$variant)
+
+# Plot
+ggplot(pred1$plotdata, aes(x = time, y = mean, color = variant, fill = variant)) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
+  labs(
+    title = "Variant Proportions Over Time with Confidence Intervals",
+    x = "Time",
+    y = "Proportion"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
 
 ```
 
