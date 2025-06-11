@@ -127,10 +127,9 @@ ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.2.12.1"
 ```
 #For clades
 ```{r}
+set.seed(69)
 
-set.seed(123)
-
-#make date an integer and ungroup observations, makes a lot of observations so slice at 50k
+#make date an integer and ungroup observations, makes a lot of observations so slice at 80k
 mlr_cladeprops_usa <- cladeprops_usa %>%
   filter(date >= mindate & date <= maxdate) %>%
   mutate(time = as.integer(date - mindate)) %>%
@@ -146,38 +145,157 @@ mod1 <- multinom(variant ~ time,
                  maxit = 1000)
 gc()
 
-pred1 <- mnl_pred_ova(model = mod1,
+#Predict with mnlpred
+pred1_mnlpred <- mnl_pred_ova(model = mod1,
                       data = mlr_cladeprops_usa,
                       x = "time",
-                      by = 7,
-                      seed = 123,
+                      by = 6,
+                      seed = 69,
                       nsim = 5, # faster
-                      probs = c(0.025, 0.975)) # default
+                      probs = c(0.005, 0.995))
+gc()
 
 
 
+#predict with predict
 
-pred1$plotdata <- pred1$plotdata %>%
-  mutate(date = mindate + time)
+datetime <- data.frame(time = mlr_cladeprops_usa$time,
+                       date = mlr_cladeprops_usa$date) %>% arrange(time) %>% distinct()
+
+  
+pred1_pred <- as.data.frame(predict(mod1, newdata = datetime, type = "probs")) %>% 
+ cbind(datetime)%>%
+  select(-"time") %>% 
+   pivot_longer(
+     cols = -date,
+     names_to = "variant",
+     values_to = "mean"
+    )
+
+library(dplyr)
+library(tidyr)
 
 
-ggplot() +
-  geom_point(
-    data = cladeprops_usa %>% filter(date > mindate & date < maxdate),
-    aes(x = date, y = cladeprop, color = variant),
-    alpha = 0.6) +
-  geom_line(
-    data = pred1$plotdata %>% filter(date > mindate & date < maxdate),
-    aes(x = date, y = mean, color = variant),
+pred1_pred <- predict(mod1, newdata = datetime, type = "probs") %>%
+  as.data.frame() %>%
+  bind_cols(datetime) %>%
+  dplyr::select(-time) %>%
+  pivot_longer(
+    cols = -date,
+    names_to = "variant",
+    values_to = "mean"
+  )
+
+
+```
+
+#Plot clade
+```{r}
+cladeprops_usa_filt <- cladeprops_usa %>%
+  filter(date >= mindate & date <= maxdate)
+
+#MNLpred plot
+pred1_mnlpred <- pred1_mnlpred$plotdata %>% 
+  mutate(date = mindate+time)
+
+
+ggplot(
+  data = pred1_mnlpred,
+  aes(x = date, color = variant, fill = variant)
+) +  geom_line(
+    aes(y = mean),
     size = 1
-  ) +
+  ) +  geom_point(
+    data = cladeprops_usa_filt,
+    aes(x = date, y = cladeprop, color = variant),
+    alpha = 0.4,
+    inherit.aes = FALSE) +
   labs(
-    title = "USA Clades Vs MLR Model Fit",
+    title = "USA Clades vs MLR Model Fit",
+    subtitle = "MNLpred: variant ~ time",
     x = "Date",
     y = "Proportion"
   ) +
   theme_minimal() +
   theme(legend.title = element_blank())
+
+
+#predict plot
+library(ggplot2)
+library(dplyr)
+
+ggplot(pred1_pred, aes(x = date, y = mean, color = variant)) +
+  geom_line(size = 1) +
+   geom_point(
+    data = cladeprops_usa_filt,
+    aes(x = date, y = cladeprop, color = variant),
+    alpha = 0.4,
+    inherit.aes = FALSE) +
+   labs(
+    title = "USA Clade Proportions vs MLR Model Fit",
+    subtitle = "predict: variant ~ time",
+    x = "Date",
+    y = "Proportion"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+
+
+```
+
+#Clades spline edition (WIP)
+```{r}
+
+
+set.seed(123)
+
+#create spline basis
+splinetime <- data.frame(
+  time = mlr_cladeprops_usa$time,
+  date = mlr_cladeprops_usa$date,
+  s1 = ns(mlr_cladeprops_usa$time, df = 2)[,1],
+  s2 = ns(mlr_cladeprops_usa$time, df = 2)[,2]
+) %>%
+  arrange(time) %>%
+  distinct()
+
+
+mlr_cladeprops_usa_spline <- left_join(mlr_cladeprops_usa, splinetime, by = c("time", "date"))
+
+mod1_spline <- multinom(
+  variant ~ s1 + s2,
+  data = mlr_cladeprops_usa_spline,
+  Hess = TRUE,
+  maxit = 1000
+)
+
+# Predict on spline time grid
+mod1_spline_long <- predict(mod1_spline, newdata = splinetime, type = "probs") %>%
+  as.data.frame() %>%
+  bind_cols(splinetime %>% dplyr::select(date)) %>%
+  pivot_longer(
+    cols = -date,
+    names_to = "variant",
+    values_to = "mean"
+  )
+
+ggplot()+
+  geom_point(data=cladeprops_usa_filt,aes(x=date,y=cladeprop,color=variant),alpha=0.4)+
+  geom_line(data=mod1_spline_long,aes(x=date,y=mean,color=variant),size=1)+
+  labs(title="USA Clade Proportions vs Splined MLR Model Fit",x="Date",y="Predicted Proportion",
+       subtitle = "variant ~ spline 1 + spline 2"
+         )+
+  theme_minimal()+
+  theme(legend.title=element_blank())
+
+
+
+AIC(mod1)
+AIC(mod1_spline)
+
+BIC(mod1)
+BIC(mod1_spline)
 
 
 ```
