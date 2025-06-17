@@ -3,7 +3,8 @@ title: "omicron_case"
 output: html_document
 ---
 #Taking difference in growth rate in omicron (BA.1) vs its corresponding clade 
-#
+
+based on code from: https://github.com/nicholasdavies/newcovid/blob/master/multinomial_logistic_fits/multinomial%20logistic%20fits_FINAL.R
 
 ```{r}
 library(readr)
@@ -12,6 +13,7 @@ library(ggplot2)
 library(nnet)
 library(MASS)
 library(MNLpred)
+library(emmeans)
 ```
 
 
@@ -296,6 +298,34 @@ AIC(mod1_spline)
 
 BIC(mod1)
 BIC(mod1_spline)
+
+
+```
+#Make function for growth rate
+```{r}
+
+library(emmeans)
+
+
+
+
+
+trend_normal <- emtrends(mod1, ~ variant | time, var = "time", at = datetime )
+summary(trend_normal)
+
+
+#Spline grid
+
+# Grid of time with spline basis
+
+
+# emtrends for each variant at each spline-based time
+model_spline <- emtrends(mod1_spline, ~ variant | s1 + s2, var = "s1", at = splinetime)
+
+
+
+trend_spline <- emtrends(mod1_spline, ~ variant, var = c("s1"))
+summary(trend_spline)
 
 
 ```
