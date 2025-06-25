@@ -132,7 +132,7 @@ ggplot(data = pangoprops_usa %>% filter(variant == c("BA.1", "BA.2", "BA.2.12.1"
 set.seed(69)
 
 #make date an integer and ungroup observations, makes a lot of observations so slice at 80k
-mlr_cladeprops_usa <- cladeprops_usa %>%
+mlr_cladeprops_usa <- multinom.collapse(cladeprops_usa) %>%
   filter(date >= mindate & date <= maxdate) %>%
   mutate(time = as.integer(date - mindate)) %>%
   uncount(sequences) %>%
@@ -191,14 +191,47 @@ pred1_pred <- predict(mod1, newdata = datetime, type = "probs") %>%
 
 ```
 
-#Plot clade
+#Plot clade, no spline
 ```{r}
-cladeprops_usa_filt <- cladeprops_usa %>%
-  filter(date >= mindate & date <= maxdate)
 
-#MNLpred plot
-pred1_mnlpred <- pred1_mnlpred$plotdata %>% 
-  mutate(date = mindate+time)
+mlr_clade_df_1 <- multinom.collapse(df = cladenum %>% filter(location == "USA"),
+                                         kthresh = .15,
+                                         coldate = date,
+                                         colname = variant,
+                                         colcount = sequences,
+                                         othername = "other") %>% 
+  filter(date >= mindate & date <= maxdate) %>%
+  mutate(time = as.integer(date - mindate)) %>%
+  slice_sample(n = 80000)
+
+
+datetime <- data.frame(time = mlr_cladeprops_usa$time,
+                       date = mlr_cladeprops_usa$date) %>% arrange(time) %>% distinct()
+
+
+mod1 <- multinom(variant ~ time,
+                 data = mlr_clade_df_1,
+                 Hess = TRUE,
+                 maxit = 1000)
+
+pred1_pred <- predict(mod1, newdata = datetime, type = "probs") %>%
+  as.data.frame() %>%
+  bind_cols(datetime) %>%
+  dplyr::select(-time) %>%
+  pivot_longer(
+    cols = -date,
+    names_to = "variant",
+    values_to = "mean"
+  )
+
+
+pred1_mnlpred <- mnl_pred_ova(model = mod1,
+                      data = mlr_clade_df_1,
+                      x = "time",
+                      by = 7,
+                      seed = 69,
+                      nsim = 20, # faster
+                      probs = c(0.005, 0.995))
 
 
 ggplot(
@@ -249,6 +282,7 @@ ggplot(pred1_pred, aes(x = date, y = mean, color = variant)) +
 #Clades spline edition (WIP)
 ```{r}
 
+#Park, 2021, when the true ratio of Rvoc/Rwt is fixed, then epidemiological conditions describe growth rates, rationale for time varying trends (splines)
 
 set.seed(123)
 
@@ -313,6 +347,33 @@ library(emmeans)
 trend_normal <- emtrends(mod1, ~ variant | time, var = "time", at = datetime )
 summary(trend_normal)
 
+library(ggplot2)
+
+# Convert to data frame for plotting
+trend_df <- as.data.frame(summary(trend_normal)) %>% left_join(datetime)
+
+library(ggplot2)
+library(dplyr)
+
+ggplot() +
+  # Growth rate trend with ribbon for confidence interval
+  geom_line(data = trend_df %>% filter(variant == "21L"),
+            aes(x = date, y = time.trend, color = "Growth Rate"), size = 1) +
+  geom_ribbon(data = trend_df %>% filter(variant == "21L"),
+              aes(x = date, ymin = lower.CL, ymax = upper.CL, fill = "Growth Rate"), alpha = 0.2) +
+  
+  # Overlay predicted frequency
+  geom_line(data = pred1_pred %>% filter(variant == "21L"),
+            aes(x = date, y = mean, color = "Predicted Proportion"), linetype = "dashed") +
+
+  labs(title = "Growth Rate and Predicted Proportion Over Time for Variant 21L",
+       y = "Value", x = "Date", color = "Legend", fill = "Legend") +
+  scale_color_manual(values = c("Growth Rate" = "steelblue", "Predicted Proportion" = "darkred")) +
+  scale_fill_manual(values = c("Growth Rate" = "steelblue")) +
+  theme_minimal()
+
+
+
 
 #Spline grid
 
@@ -320,12 +381,23 @@ summary(trend_normal)
 
 
 # emtrends for each variant at each spline-based time
-model_spline <- emtrends(mod1_spline, ~ variant | s1 + s2, var = "s1", at = splinetime)
+model_spline <- emtrends(mod1_spline, ~ variant | s1 , var = "s1", at = splinetime)
 
 
 
 trend_spline <- emtrends(mod1_spline, ~ variant, var = c("s1"))
 summary(trend_spline)
+
+
+```
+
+```{r}
+
+t <- multinom.collapse(df = pangonum %>% filter(location == "USA"), coldate = date, colname = variant, colcount = sequences) 
+
+
+t
+
 
 
 ```
