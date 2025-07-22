@@ -1,0 +1,16 @@
+---
+title: "nimbus_case"
+output: html_document
+---
+
+get api
+```{r}
+
+library(httr)
+library(jsonlite)
+
+usa_rec <- GET("https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/pango_lineages/usa.tsv.gz")
+
+
+```
+
