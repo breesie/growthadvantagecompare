@@ -179,4 +179,168 @@ prop_plots <- pmap(names, propplot)
 walk(prop_plots, print)
 
 ```
+```{r}
+library(dplyr)
+library(ggplot2)
+library(purrr)
+
+mindate <- as.Date("2021-06-01")
+
+# --- Prepare pango proportions ---
+pango_long <- pangoprops_usa %>%
+  filter(date > mindate) %>%
+  semi_join(names, by = c("name" = "pango")) %>%
+  left_join(names, by = c("name" = "pango")) %>%
+  transmute(
+    date,
+    prop = pangoprop,
+    label = paste("Pango lineage:", name),
+    clade,
+    type = "Pango"
+  )
+
+
+clade_long <- cladeprops_usa %>%
+  filter(date > mindate) %>%
+  semi_join(names, by = c("name" = "clade")) %>%
+  transmute(
+    date,
+    prop = cladeprop,
+    label = paste("Nextstrain clade:", name),
+    clade = name,
+    type = "Clade"
+  )
+
+
+plot_df <- bind_rows(pango_long, clade_long)
+
+# plot
+ggplot(plot_df, aes(x = date, y = prop, color = label)) +
+  geom_line(
+    aes(
+      alpha = type,
+      linewidth = type
+    )
+  ) +
+  scale_alpha_manual(
+    values = c(
+      "Pango" = 1,
+      "Clade" = 1
+    ),
+    guide = "none"
+  ) +
+  scale_linewidth_manual(
+    values = c(
+      "Pango" = 1.0,
+      "Clade" = 1.0
+    ),
+    guide = "none"
+  ) +
+  scale_color_manual(
+    values = c(
+      "Pango lineage: BA.1" = "#ffe3b3",
+      "Pango lineage: BA.2" = "#4a7f77",
+      "Pango lineage: BA.5" = "#a3b686",
+      "Pango lineage: XBB.1.5" = "#bcbddc",
+      "Pango lineage: KP.3.1.1" = "#c8d6e6",
+      
+      "Nextstrain clade: 21K" = "#fed789",
+      "Nextstrain clade: 21L" = "#023743",
+      "Nextstrain clade: 22B" = "#72874e",
+      "Nextstrain clade: 23A" = "#9e9ac8",
+      "Nextstrain clade: 24E" = "#a4bed5"
+    )
+  ) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    title = "USA SARS-CoV-2 Variant Proportions Over Time",
+    y = "Proportion of Sequences",
+    color = "Variant representation"
+  ) +
+  theme_minimal()
+
+
+```
+```{r}
+library(dplyr)
+library(ggplot2)
+library(colorspace)
+
+mindate <- as.Date("2021-06-01")
+
+# ---- Base colors per clade–pango combo ----
+base_colors <- c(
+  "21K / BA.1"     = "#1b9e77",
+  "21L / BA.2"     = "#d95f02",
+  "22B / BA.5"     = "#7570b3",
+  "23A / XBB.1.5"  = "#e7298a",
+  "24E / KP.3.1.1" = "#66a61e"
+)
+
+# ---- Prepare pango proportions ----
+pango_long <- pangoprops_usa %>%
+  filter(date > mindate) %>%
+  semi_join(names, by = c("name" = "pango")) %>%
+  left_join(names, by = c("name" = "pango")) %>%
+  mutate(
+    group = paste(clade, "/", name),
+    label = paste("Pango:", name),
+    color_key = group,
+    type = "Pango",
+    prop = pangoprop
+  ) %>%
+  select(date, prop, label, color_key, type)
+
+# ---- Prepare clade proportions ----
+clade_long <- cladeprops_usa %>%
+  filter(date > mindate) %>%
+  semi_join(names, by = c("name" = "clade")) %>%
+  left_join(names, by = c("name" = "clade")) %>%
+  mutate(
+    group = paste(name, "/", pango),
+    label = paste("Clade:", name),
+    color_key = group,
+    type = "Clade",
+    prop = cladeprop
+  ) %>%
+  select(date, prop, label, color_key, type)
+
+# ---- Combine data ----
+plot_df <- bind_rows(clade_long, pango_long)
+
+# ---- Factor levels for plotting ----
+legend_levels <- c(
+  "Clade: 21K", "Pango: BA.1",
+  "Clade: 21L", "Pango: BA.2",
+  "Clade: 22B", "Pango: BA.5",
+  "Clade: 23A", "Pango: XBB.1.5",
+  "Clade: 24E", "Pango: KP.3.1.1"
+)
+
+plot_df <- plot_df %>%
+  mutate(label = factor(label, levels = legend_levels))
+
+# ---- Build color scale ----
+color_values <- c(
+  setNames(base_colors, paste("Clade:", sub(" /.*", "", names(base_colors)))),
+  setNames(
+    lighten(base_colors, 0.4),
+    paste("Pango:", sub(".*/ ", "", names(base_colors)))
+  )
+)
+
+# ---- Plot ----
+ggplot(plot_df, aes(x = date, y = prop, color = label)) +
+  geom_line(aes(alpha = type, linewidth = type)) +
+  scale_color_manual(values = color_values) +
+  scale_alpha_manual(values = c("Clade" = 0.9, "Pango" = 0.45), guide = "none") +
+  scale_linewidth_manual(values = c("Clade" = 1.4, "Pango" = 0.9), guide = "none") +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    title = "USA SARS-CoV-2 Variant Proportions Over Time",
+    y = "Proportion of Sequences",
+    color = "Clade / Pango lineage"
+  ) +
+  theme_minimal()
+```
 
