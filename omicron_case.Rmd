@@ -340,10 +340,6 @@ BIC(mod1_spline)
 
 library(emmeans)
 
-
-
-
-
 trend_normal <- emtrends(mod1, ~ variant | time, var = "time", at = datetime )
 summary(trend_normal)
 
@@ -396,7 +392,6 @@ summary(trend_spline)
 t <- multinom.collapse(df = pangonum %>% filter(location == "USA"), coldate = date, colname = variant, colcount = sequences) 
 
 
-t
 
 
 

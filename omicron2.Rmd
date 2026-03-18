@@ -1,0 +1,87 @@
+---
+title: "omicron2"
+output: html_document
+---
+
+```{r}
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(nnet)
+library(MASS)
+#library(MNLpred)
+library(emmeans)
+
+#read in functions 
+source('collapse_categories.R')
+```
+
+
+```{r}
+#filter the clade group to USA and time period of interest 
+
+cladenum <- read_tsv("~/growthadvantagecompare/sequences_static/global-2.tsv") %>% rename(variant = clade) %>% 
+filter(location == "USA", date >= as.Date('2022-01-01'), date <= as.Date('2023-01-01'))
+
+#https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/pango_lineages/global.tsv.gz
+
+```
+#Collapse categories 
+```{r}
+
+#collapse categories, turn date numbers into integer 
+cladenumcol <- multinom.collapse(cladenum, kthresh = .1, coldate = date, colname = variant, colcount = sequences)[1] %>%
+  mutate(time = as.integer(date - min(date)))
+
+
+#propplot
+
+plot <- multinom.collapse(cladenum, kthresh = .30, coldate = date, colname = variant, colcount = sequences)[[2]]
+
+
+
+datetime <- data.frame(time = cladenumcol$time,
+                       date = cladenumcol$date) %>% arrange(time) %>% distinct()
+
+
+om_clade_mod <- multinom(variant ~ time,
+                 data = cladenumcol,
+                 Hess = TRUE,
+                 maxit = 1000)
+
+
+om_clade_pred <- as.data.frame(predict(om_clade_mod, newdata = datetime, type = "probs")) %>% 
+ cbind(datetime) %>%
+  dplyr::select(-"time") %>% 
+   pivot_longer(
+     cols = -date,
+     names_to = "variant",
+     values_to = "mean"
+    )
+
+
+```
+
+#Plot
+```{r}
+plot <- ggplot() +
+  geom_line(
+  data = om_clade_pred,
+  aes(x = date, y = mean, color = variant)
+) +  geom_point(
+      data = plot,
+      aes(x = date, y = prop, color = variant),
+      alpha = 0.4,
+      inherit.aes = FALSE) +
+      labs(
+        title = "USA Clades vs MLR Model Fit",
+        subtitle = "MNLpred: variant ~ time",
+        x = "Date",
+        y = "Proportion"
+      )
+
+
+
+```
+
+  

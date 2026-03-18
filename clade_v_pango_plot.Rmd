@@ -25,52 +25,34 @@ pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv") %>%
 
 #https://data.nextstrain.org/files/workflows/forecasts-ncov/gisaid/nextstrain_clades/global.tsv.gz
 
+
+#load in metadata from nextstrain 
+metadata <- read_tsv("~/growthadvantagecompare/sequences_static/metadata.tsv") 
+
 #https://ncov-clades-schema.vercel.app
 ```
 #List of pango lineages + clades to plot 
 ```{r}
-names <- tibble(
-  clade = c("21K", "21L", "22B", "23A", "24E"),
-  pango = c("BA.1", "BA.2", "BA.5", "XBB.1.5", "KP.3.1.1")
-)
-```
+#making list of the PANGO lineages and their corresponding clades 
+
+#group by the clade membership column and find the most common pango lineages within each clade based on nextstrain data 
+metadata_clade_pango <- metadata %>%
+  group_by(clade_membership) %>%
+  count(pango_lineage) 
+
+#strip anything past the third letter from the metadata clade_membership
+metadata_clade_pango <- metadata_clade_pango %>% 
+  mutate(clade_membership = str_extract(clade_membership, "^[0-9]+[A-Z]"))
 
 
-#Plot counts of each clade and pango lineage combination 
-```{r}
-#restrict data to first appearance of clade (because clade is assigned when growth of pango lineage is high)
-
-countplot <- function (clade, pango) { 
-
-usa_pango_ct <- pangonum %>% filter(location == "USA", name == pango)
-
-usa_clade_ct <- cladenum %>% filter(location == "USA", name == clade) 
-
-
-mindate <- min(usa_pango_ct$date + 400) 
-maxdate <- mindate + 730
-
-bound_pct <- bind_rows(usa_pango_ct, usa_clade_ct) 
-# %>% 
-#   filter(date < maxdate & date > mindate)
-
-plot <- ggplot(bound_pct, aes(x = date, y = sequences, fill = name)) + 
-  geom_col() +
-  labs(title = "Pango lineage and Corresponding Clade Sequence Volume") +
-  theme_minimal()
-
-return(plot)
-
-}
-
-plots <- pmap(
-names,
-countplot
-)
-
-walk(plots, print)
+#old clade/ pango pairings
+ names <- tibble(
+   clade = c("21K", "21L", "22B", "23A", "24E", "24A", "25C"),
+  pango = c("BA.1", "BA.2", "BA.5", "XBB.1.5", "KP.3.1.1", "JN.1", "XFG")
+ )
 
 ```
+
 #Plot all sequences volume by day (should be the same)
 ```{r}
 #tot n sequences per day
@@ -92,255 +74,303 @@ ggplot() +
   scale_fill_manual(values = c("clade" = "coral")) +
   scale_color_manual(values = c("pango" = "steelblue")) +
   labs(
-    title = "Total Sequences by Unit Over Time (Ensure consistency)",
+    title = "Total Sequences Over Time in USA",
     x = "Date",
     y = "Total Sequences",
+    subtitle = "same number of sequences between clades and PANGOs"
     ) +
   theme_minimal()
 
 ```
 
-#Plot proportions of clade, pango lineage by day 
-```{r}
 
+```{r}
+#proportions of each clade and pango lineage by day 
 pangoprops_usa <- left_join(pangototn_usa, pangonum %>% filter(location == "USA"), by = "date") %>% 
-  mutate(pangoprop = sequences/totn)
+ mutate(pangoprop = sequences/totn) 
 
-cladeprops_usa <- left_join(cladetotn_usa, cladenum %>% filter(location == "USA"), by = "date") %>% 
-  mutate(cladeprop = sequences/totn)
-
-# #check that it has gotten proportions correctly 
-# BA2_on_a_day <- filter(pangonum, name == "BA.2", location == "USA", date == "2020-12-11") %>% 
-#        pull(sequences)
-# 
-# totseq_on_a_day <-filter(pangototn_usa, date == "2020-12-11") %>% pull(totn)
-# 
-# prop_BA2_on_a_day <- BA2_on_a_day/totseq_on_a_day
-# 
-# filter(pangoprops_usa, name == "BA.2", date == "2020-12-11") %>% pull(pangoprop) == prop_BA2_on_a_day
-# 
-# #confirmed
+cladeprops_usa <- left_join(cladetotn_usa, cladenum %>% filter(location == "USA"), by = "date") %>%  
+mutate(cladeprop = sequences/totn) 
 
 
-```
+#make vectors of the clades inside the PANGO lineages based on the Nextstrain metadata 
+pinc_21K <- (metadata_clade_pango %>% filter(clade_membership == "21K")) %>% 
+  pull(pango_lineage)
 
-```{r}
-
-propplot <- function(clade, pango) {
-
-  mindate <- as.Date("2021-06-01")
-
-  usa_pango_props <- pangoprops_usa %>%
-    filter(name == pango, date > mindate)
-
-  usa_clade_props <- cladeprops_usa %>%
-    filter(name == clade, date > mindate)
-
-  pango_lab <- paste("Pango lineage:", pango)
-  clade_lab <- paste("Nextstrain clade:", clade)
-
-  ggplot() +
-    geom_line(
-      data = usa_pango_props,
-      aes(
-        x = date,
-        y = pangoprop,
-        color = pango_lab
-      ),
-      alpha = 0.4,
-      linewidth = 1
-    ) +
-    geom_line(
-      data = usa_clade_props,
-      aes(
-        x = date,
-        y = cladeprop,
-        color = clade_lab
-      ),
-      alpha = 0.9,
-      linewidth = 1.3
-    ) +
-    scale_color_manual(
-      values = setNames(
-        c("#1f77b4", "#d62728"),
-        c(pango_lab, clade_lab)
-      )
-    ) +
-    coord_cartesian(ylim = c(0, 1)) +
-    labs(
-      title = paste("USA Proportion:", pango, "within", clade),
-      y = "Proportion of Sequences",
-      color = "Variant representation"
-    ) +
-    theme_minimal()
-}
-
-prop_plots <- pmap(names, propplot)
-walk(prop_plots, print)
-
-```
-```{r}
-library(dplyr)
-library(ggplot2)
-library(purrr)
-
-mindate <- as.Date("2021-06-01")
-
-# --- Prepare pango proportions ---
-pango_long <- pangoprops_usa %>%
-  filter(date > mindate) %>%
-  semi_join(names, by = c("name" = "pango")) %>%
-  left_join(names, by = c("name" = "pango")) %>%
-  transmute(
-    date,
-    prop = pangoprop,
-    label = paste("Pango lineage:", name),
-    clade,
-    type = "Pango"
-  )
+pinc_21K <- (metadata_clade_pango %>% filter(clade_membership == "21K")) %>% 
+  pull(pango_lineage)
 
 
-clade_long <- cladeprops_usa %>%
-  filter(date > mindate) %>%
-  semi_join(names, by = c("name" = "clade")) %>%
-  transmute(
-    date,
-    prop = cladeprop,
-    label = paste("Nextstrain clade:", name),
-    clade = name,
-    type = "Clade"
-  )
+#plot the clades next to the 
 
-
-plot_df <- bind_rows(pango_long, clade_long)
-
-# plot
-ggplot(plot_df, aes(x = date, y = prop, color = label)) +
+ggplot() +
   geom_line(
-    aes(
-      alpha = type,
-      linewidth = type
-    )
-  ) +
-  scale_alpha_manual(
-    values = c(
-      "Pango" = 1,
-      "Clade" = 1
-    ),
-    guide = "none"
-  ) +
-  scale_linewidth_manual(
-    values = c(
-      "Pango" = 1.0,
-      "Clade" = 1.0
-    ),
-    guide = "none"
-  ) +
-  scale_color_manual(
-    values = c(
-      "Pango lineage: BA.1" = "#ffe3b3",
-      "Pango lineage: BA.2" = "#4a7f77",
-      "Pango lineage: BA.5" = "#a3b686",
-      "Pango lineage: XBB.1.5" = "#bcbddc",
-      "Pango lineage: KP.3.1.1" = "#c8d6e6",
-      
-      "Nextstrain clade: 21K" = "#fed789",
-      "Nextstrain clade: 21L" = "#023743",
-      "Nextstrain clade: 22B" = "#72874e",
-      "Nextstrain clade: 23A" = "#9e9ac8",
-      "Nextstrain clade: 24E" = "#a4bed5"
-    )
-  ) +
-  coord_cartesian(ylim = c(0, 1)) +
-  labs(
-    title = "USA SARS-CoV-2 Variant Proportions Over Time",
-    y = "Proportion of Sequences",
-    color = "Variant representation"
-  ) +
-  theme_minimal()
-
-
-```
-```{r}
-library(dplyr)
-library(ggplot2)
-library(colorspace)
-
-mindate <- as.Date("2021-06-01")
-
-# ---- Base colors per clade–pango combo ----
-base_colors <- c(
-  "21K / BA.1"     = "#1b9e77",
-  "21L / BA.2"     = "#d95f02",
-  "22B / BA.5"     = "#7570b3",
-  "23A / XBB.1.5"  = "#e7298a",
-  "24E / KP.3.1.1" = "#66a61e"
-)
-
-# ---- Prepare pango proportions ----
-pango_long <- pangoprops_usa %>%
-  filter(date > mindate) %>%
-  semi_join(names, by = c("name" = "pango")) %>%
-  left_join(names, by = c("name" = "pango")) %>%
-  mutate(
-    group = paste(clade, "/", name),
-    label = paste("Pango:", name),
-    color_key = group,
-    type = "Pango",
-    prop = pangoprop
-  ) %>%
-  select(date, prop, label, color_key, type)
-
-# ---- Prepare clade proportions ----
-clade_long <- cladeprops_usa %>%
-  filter(date > mindate) %>%
-  semi_join(names, by = c("name" = "clade")) %>%
-  left_join(names, by = c("name" = "clade")) %>%
-  mutate(
-    group = paste(name, "/", pango),
-    label = paste("Clade:", name),
-    color_key = group,
-    type = "Clade",
-    prop = cladeprop
-  ) %>%
-  select(date, prop, label, color_key, type)
-
-# ---- Combine data ----
-plot_df <- bind_rows(clade_long, pango_long)
-
-# ---- Factor levels for plotting ----
-legend_levels <- c(
-  "Clade: 21K", "Pango: BA.1",
-  "Clade: 21L", "Pango: BA.2",
-  "Clade: 22B", "Pango: BA.5",
-  "Clade: 23A", "Pango: XBB.1.5",
-  "Clade: 24E", "Pango: KP.3.1.1"
-)
-
-plot_df <- plot_df %>%
-  mutate(label = factor(label, levels = legend_levels))
-
-# ---- Build color scale ----
-color_values <- c(
-  setNames(base_colors, paste("Clade:", sub(" /.*", "", names(base_colors)))),
-  setNames(
-    lighten(base_colors, 0.4),
-    paste("Pango:", sub(".*/ ", "", names(base_colors)))
+    data = cladeprops_usa %>% filter(name == "21K"),
+    aes(x = date, y = cladeprop),
+    color = "black", size = 1.2
+  ) + 
+  geom_line(
+    data = pangoprops_usa %>% 
+      filter(name %in% (
+        metadata_clade_pango %>% 
+          filter(clade_membership == "21K") %>% 
+          pull(pango_lineage)
+      )),
+    aes(x = date, y = pangoprop, color = name, group = name)
   )
-)
 
-# ---- Plot ----
-ggplot(plot_df, aes(x = date, y = prop, color = label)) +
-  geom_line(aes(alpha = type, linewidth = type)) +
-  scale_color_manual(values = color_values) +
-  scale_alpha_manual(values = c("Clade" = 0.9, "Pango" = 0.45), guide = "none") +
-  scale_linewidth_manual(values = c("Clade" = 1.4, "Pango" = 0.9), guide = "none") +
-  coord_cartesian(ylim = c(0, 1)) +
-  labs(
-    title = "USA SARS-CoV-2 Variant Proportions Over Time",
-    y = "Proportion of Sequences",
-    color = "Clade / Pango lineage"
-  ) +
-  theme_minimal()
+
+pangoprops_usa %>% 
+  filter(name %in% (metadata_clade_pango 
+                    %>% filter(clade_membership == "21K") %>% 
+                                       pull(pango_lineage)))
+
+
+
+metadata_clade_pango %>% filter(clade_membership == "21K") %>% 
+                                       pull(pango_lineage)
 ```
+
+
+
+
+
+
+
+
+
+
+<!-- #old code -->
+<!-- #Plot counts of each clade and pango lineage combination  -->
+<!-- ```{r} -->
+<!-- #restrict data to first appearance of clade (because clade is assigned when growth of pango lineage is high) -->
+
+<!-- countplot <- function (clade, pango) {  -->
+
+<!-- usa_pango_ct <- pangonum %>% filter(location == "USA", name == pango) -->
+
+<!-- usa_clade_ct <- cladenum %>% filter(location == "USA", name == clade)  -->
+
+
+<!-- mindate <- min(usa_pango_ct$date + 400)  -->
+<!-- maxdate <- mindate + 730 -->
+
+<!-- bound_pct <- bind_rows(usa_pango_ct, usa_clade_ct)  -->
+<!-- # %>%  -->
+<!-- #   filter(date < maxdate & date > mindate) -->
+
+<!-- plot <- ggplot(bound_pct, aes(x = date, y = sequences, fill = name)) +  -->
+<!--   geom_col() + -->
+<!--   labs(title = "Pango lineage and Corresponding Clade Sequence Volume") + -->
+<!--   theme_minimal() -->
+
+<!-- return(plot) -->
+
+<!-- } -->
+
+<!-- plots <- pmap( -->
+<!-- names, -->
+<!-- countplot -->
+<!-- ) -->
+
+<!-- walk(plots, print) -->
+
+<!-- ``` -->
+<!-- #Plot all sequences volume by day (should be the same) -->
+<!-- ```{r} -->
+<!-- #tot n sequences per day -->
+
+<!-- cladetotn_usa <- cladenum %>% filter(location == "USA") %>%  -->
+<!--   group_by(date) %>% summarise(totn = sum(sequences)) %>%  -->
+<!--   mutate("variant" = "clade") -->
+
+<!-- pangototn_usa <- pangonum %>% filter(location == "USA") %>%  -->
+<!--   group_by(date) %>% summarise(totn = sum(sequences)) %>%  -->
+<!--   mutate("variant" = "pango") -->
+
+
+<!-- ggplot() + -->
+<!--   geom_col(data = cladetotn_usa %>% filter(variant == "clade"), -->
+<!--            aes(x = date, y = totn, fill = variant), alpha = 0.8) + -->
+<!--   geom_line(data = pangototn_usa %>% filter(variant == "pango"), -->
+<!--             aes(x = date, y = totn, color = variant), size = .1) + -->
+<!--   scale_fill_manual(values = c("clade" = "coral")) + -->
+<!--   scale_color_manual(values = c("pango" = "steelblue")) + -->
+<!--   labs( -->
+<!--     title = "Total Sequences Over Time in USA", -->
+<!--     x = "Date", -->
+<!--     y = "Total Sequences", -->
+<!--     subtitle = "same number of sequences between clades and PANGOs" -->
+<!--     ) + -->
+<!--   theme_minimal() -->
+
+<!-- ``` -->
+
+<!-- #Plot proportions of clade, pango lineage by day  -->
+<!-- ```{r} -->
+
+<!-- pangoprops_usa <- left_join(pangototn_usa, pangonum %>% filter(location == "USA"), by = "date") %>%  -->
+<!--   mutate(pangoprop = sequences/totn) -->
+
+<!-- cladeprops_usa <- left_join(cladetotn_usa, cladenum %>% filter(location == "USA"), by = "date") %>%  -->
+<!--   mutate(cladeprop = sequences/totn) -->
+
+<!-- # #check that it has gotten proportions correctly  -->
+<!-- # BA2_on_a_day <- filter(pangonum, name == "BA.2", location == "USA", date == "2020-12-11") %>%  -->
+<!-- #        pull(sequences) -->
+<!-- #  -->
+<!-- # totseq_on_a_day <-filter(pangototn_usa, date == "2020-12-11") %>% pull(totn) -->
+<!-- #  -->
+<!-- # prop_BA2_on_a_day <- BA2_on_a_day/totseq_on_a_day -->
+<!-- #  -->
+<!-- # filter(pangoprops_usa, name == "BA.2", date == "2020-12-11") %>% pull(pangoprop) == prop_BA2_on_a_day -->
+<!-- #  -->
+<!-- # #confirmed -->
+
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+
+<!-- propplot <- function(clade, pango) { -->
+
+<!--   mindate <- as.Date("2021-06-01") -->
+
+<!--   usa_pango_props <- pangoprops_usa %>% -->
+<!--     filter(name == pango, date > mindate) -->
+
+<!--   usa_clade_props <- cladeprops_usa %>% -->
+<!--     filter(name == clade, date > mindate) -->
+
+<!--   pango_lab <- paste("Pango lineage:", pango) -->
+<!--   clade_lab <- paste("Nextstrain clade:", clade) -->
+
+<!--   ggplot() + -->
+<!--     geom_line( -->
+<!--       data = usa_pango_props, -->
+<!--       aes( -->
+<!--         x = date, -->
+<!--         y = pangoprop, -->
+<!--         color = pango_lab -->
+<!--       ), -->
+<!--       alpha = 0.4, -->
+<!--       linewidth = 1 -->
+<!--     ) + -->
+<!--     geom_line( -->
+<!--       data = usa_clade_props, -->
+<!--       aes( -->
+<!--         x = date, -->
+<!--         y = cladeprop, -->
+<!--         color = clade_lab -->
+<!--       ), -->
+<!--       alpha = 0.9, -->
+<!--       linewidth = 1.3 -->
+<!--     ) + -->
+<!--     scale_color_manual( -->
+<!--       values = setNames( -->
+<!--         c("#1f77b4", "#d62728"), -->
+<!--         c(pango_lab, clade_lab) -->
+<!--       ) -->
+<!--     ) + -->
+<!--     coord_cartesian(ylim = c(0, 1)) + -->
+<!--     labs( -->
+<!--       title = paste("USA Proportion:", pango, "within", clade), -->
+<!--       y = "Proportion of Sequences", -->
+<!--       color = "Variant representation" -->
+<!--     ) + -->
+<!--     theme_minimal() -->
+<!-- } -->
+
+<!-- prop_plots <- pmap(names, propplot) -->
+<!-- walk(prop_plots, print) -->
+
+
+
+
+<!-- ``` -->
+<!-- ```{r} -->
+<!-- library(dplyr) -->
+<!-- library(ggplot2) -->
+<!-- library(purrr) -->
+
+<!-- mindate <- as.Date("2021-06-01") -->
+
+
+<!-- pango_long <- pangoprops_usa %>% -->
+<!--   filter(date > mindate) %>% -->
+<!--   semi_join(names, by = c("name" = "pango")) %>% -->
+<!--   left_join(names, by = c("name" = "pango")) %>% -->
+<!--   transmute( -->
+<!--     date, -->
+<!--     prop = pangoprop, -->
+<!--     label = paste("Pango lineage:", name), -->
+<!--     clade, -->
+<!--     type = "Pango" -->
+<!--   ) -->
+
+
+<!-- clade_long <- cladeprops_usa %>% -->
+<!--   filter(date > mindate) %>% -->
+<!--   semi_join(names, by = c("name" = "clade")) %>% -->
+<!--   transmute( -->
+<!--     date, -->
+<!--     prop = cladeprop, -->
+<!--     label = paste("Nextstrain clade:", name), -->
+<!--     clade = name, -->
+<!--     type = "Clade" -->
+<!--   ) -->
+
+
+<!-- plot_df <- bind_rows(pango_long, clade_long) -->
+
+<!-- # plot -->
+<!-- ggplot(plot_df, aes(x = date, y = prop, color = label)) + -->
+<!--   geom_line( -->
+<!--     aes( -->
+<!--       alpha = type, -->
+<!--       linewidth = type -->
+<!--     ) -->
+<!--   ) + -->
+<!--   scale_alpha_manual( -->
+<!--     values = c( -->
+<!--       "Pango" = 1, -->
+<!--       "Clade" = 1 -->
+<!--     ), -->
+<!--     guide = "none" -->
+<!--   ) + -->
+<!--   scale_linewidth_manual( -->
+<!--     values = c( -->
+<!--       "Pango" = 1.0, -->
+<!--       "Clade" = 1.0 -->
+<!--     ), -->
+<!--     guide = "none" -->
+<!--   ) + -->
+<!--   scale_color_manual( -->
+<!--     values = c( -->
+<!--       "Pango lineage: BA.1" = "#ffe3b3", -->
+<!--       "Pango lineage: BA.2" = "#4a7f77", -->
+<!--       "Pango lineage: BA.5" = "#a3b686", -->
+<!--       "Pango lineage: XBB.1.5" = "#bcbddc", -->
+<!--       "Pango lineage: KP.3.1.1" = "#c8d6e6", -->
+
+<!--       "Nextstrain clade: 21K" = "#fed789", -->
+<!--       "Nextstrain clade: 21L" = "#023743", -->
+<!--       "Nextstrain clade: 22B" = "#72874e", -->
+<!--       "Nextstrain clade: 23A" = "#9e9ac8", -->
+<!--       "Nextstrain clade: 24E" = "#a4bed5" -->
+<!--     ) -->
+<!--   ) + -->
+<!--   coord_cartesian(ylim = c(0, 1)) + -->
+<!--   labs( -->
+<!--     title = "USA SARS-CoV-2 Variant Proportions Over Time", -->
+<!--     y = "Proportion of Sequences", -->
+<!--     color = "Variant representation" -->
+<!--   ) + -->
+<!--   theme_minimal() -->
+
+
+<!-- ``` -->
+
+
+
 

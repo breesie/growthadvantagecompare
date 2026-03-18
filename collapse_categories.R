@@ -10,7 +10,9 @@ library(dplyr)
 #' @param othername The name for the other category
 #' @param byweek Default = T
 
-multinom.collapse <- function(df, kthresh = .15, coldate, colname, colcount, othername = "other"){
+    
+    
+multinom.collapse <- function(df, kthresh = .10, coldate, colname, colcount, othername = "other"){
   
   
 #summarize all n by date, left join with original df and summarize proportion of each colname
@@ -20,6 +22,8 @@ multinom.collapse <- function(df, kthresh = .15, coldate, colname, colcount, oth
     allprop <- left_join(df, allntot, join_by({{coldate}})) %>% 
     mutate(prop = {{colcount}}/totn) %>% 
     dplyr::select({{coldate}}, {{colname}}, prop) %>% arrange(desc(prop))
+    
+    
   
 #get highest proportions per each unique variable and filter to find threshold names
     
@@ -32,10 +36,13 @@ multinom.collapse <- function(df, kthresh = .15, coldate, colname, colcount, oth
                                       {{colname}}, 
                                       othername)) %>% uncount({{colcount}})
     
-    return(df2)
+    out <- list(df2, allprop)
+    
+    return(out)
   
 }
   
+
   
   
   
