@@ -93,6 +93,12 @@ cladeprops_usa <- left_join(cladetotn_usa, cladenum %>% filter(location == "USA"
 mutate(cladeprop = sequences/totn) 
 
 
+#filter by %cutoff 
+pangoprops_usa_filt <- pangoprops_usa %>% 
+  group_by(name) %>% 
+  filter(pangoprop > .02) %>% 
+  pull(name)
+
 #make vectors of the clades inside the PANGO lineages based on the Nextstrain metadata  
 pinc_21K <- (metadata_clade_pango %>% filter(clade_membership == "21K")) %>% 
   pull(pango_lineage)
@@ -113,15 +119,17 @@ plot1fun <- function(clade) {
     summarise(mindate = min(date) - 150) %>% 
     pull(mindate)
   
+  #binding row for BA.5
   p_in_c <- metadata_clade_pango %>% 
     filter(clade_membership == clade) %>% 
+    bind_rows(tibble("BA.5")) %>% 
     pull(pango_lineage)
 
   ggplot() +
     # PANGO lineages
     geom_line(
       data = pangoprops_usa %>% 
-        filter(name %in% p_in_c, date >= mindate, date <= mindate + 300),
+        filter(name %in% pangoprops_usa_filt & name %in% p_in_c, date >= mindate, date <= mindate + 300),
       aes(x = date, y = pangoprop, color = name, group = name),
       linewidth = 0.7,
       alpha = 0.7
