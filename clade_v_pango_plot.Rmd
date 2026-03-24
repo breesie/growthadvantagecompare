@@ -8,7 +8,8 @@ library(readr)
 library(tidyverse)
 library(ggplot2)
 library(purrr)
-library(emmeans)
+library(gt)
+
 ```
 
 
@@ -27,9 +28,12 @@ pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv") %>%
 
 
 #load in metadata from nextstrain 
+#from: 
 metadata <- read_tsv("~/growthadvantagecompare/sequences_static/metadata.tsv") 
 
-#https://ncov-clades-schema.vercel.app
+
+
+
 ```
 #List of pango lineages + clades to plot 
 ```{r}
@@ -96,7 +100,7 @@ mutate(cladeprop = sequences/totn)
 #filter by %cutoff 
 pangoprops_usa_filt <- pangoprops_usa %>% 
   group_by(name) %>% 
-  filter(pangoprop > .02) %>% 
+  filter(pangoprop > .01) %>% 
   pull(name)
 
 #make vectors of the clades inside the PANGO lineages based on the Nextstrain metadata  
@@ -172,17 +176,12 @@ purrr::map(names$clade, plot1fun)
 
 ```
 
-
-
-
-
-
-
+#ai assisted nice plot 
 ```{r}
 library(tidyverse)
-library(scales)  # for alpha()
+library(scales)
 
-# Assign a base color for each clade
+# Base colors for clades
 clade_colors <- c(
   "21K" = "#1b9e77",
   "21L" = "#d95f02",
@@ -191,82 +190,160 @@ clade_colors <- c(
   "24E" = "#66a61e"
 )
 
-plot1fun <- function(clade) {
+cladelist <- c("21K", "21L", "22B", "23A", "24E")
+
+
+
+# Build dataset
+plot_data <- map_dfr(cladelist, function(clade_i) {
   
-  # get mindate properly
-  mindate <- cladeprops_usa %>% 
-    filter(name == clade) %>% 
-    filter(cladeprop == max(cladeprop, na.rm = TRUE)) %>% 
-    summarise(mindate = min(date) - 150) %>% 
-    pull(mindate)
-  
-  # PANGO lineages in this clade
   p_in_c <- metadata_clade_pango %>% 
-    filter(clade_membership == clade) %>% 
+    filter(clade_membership == clade_i) %>% 
     pull(pango_lineage)
   
-  # Extract plotting data
   pangos <- pangoprops_usa %>% 
-    filter(name %in% p_in_c, date >= mindate, date <= mindate + 300)
+    filter(name %in% p_in_c, date >= as.Date("2021-09-01")) %>%
+    group_by(name) %>%
+    filter(max(pangoprop, na.rm = TRUE) >= 0.02) %>%  # keep ≥2%
+    ungroup() %>%
+    transmute(
+      date,
+      value = pangoprop,
+      name = as.character(name),
+      type = "pango",
+      clade = clade_i
+    )
   
   clade_line <- cladeprops_usa %>% 
-    filter(name == clade, date >= mindate, date <= mindate + 300)
-  
-  # Base color
-  base_color <- clade_colors[clade]
-  
-  # Generate lighter colors for PANGO lineages
-  pango_lineages <- unique(pangos$name)
-  
-  # Make gradient from a lighter version of the base color → base color
-  light_color <- alpha(base_color, 0.4)  # adjust 0.3–0.5 for visibility
-  pango_colors <- colorRampPalette(c(light_color, base_color))(length(pango_lineages))
-  names(pango_colors) <- pango_lineages
-  
-  # Final plot
-  ggplot() +
-    # PANGO lineages (lighter shades of clade color)
-    geom_line(
-      data = pangos,
-      aes(x = date, y = pangoprop, color = name, group = name),
-      linewidth = 0.7,
-      alpha = 0.7
-    ) +
-    scale_color_manual(values = pango_colors) +
-    
-    # Clade line (bold + darkest)
-    geom_line(
-      data = clade_line,
-      aes(x = date, y = cladeprop),
-      color = base_color,
-      linewidth = 1.2
-    ) +
-    
-    labs(
-      title = paste(clade, "vs Constituent PANGO Lineages"),
-      x = "Date",
-      y = "Proportion",
-      color = "PANGO lineage"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold"),
-      legend.position = "right",
-      panel.grid.minor = element_blank()
+    filter(name == clade_i, date >= as.Date("2021-09-01")) %>%
+    transmute(
+      date,
+      value = cladeprop,
+      name = clade_i,
+      type = "clade",
+      clade = clade_i
     )
-}
+  
+  bind_rows(pangos, clade_line)
+})
 
+# Clean types
+plot_data <- plot_data %>%
+  mutate(
+    name = as.character(name),
+    clade = factor(clade, levels = cladelist)
+  )
 
+# Build PANGO color gradients
+color_map <- map(cladelist, function(clade_i) {
+  
+  base_color <- clade_colors[clade_i]
+  
+  pango_names <- plot_data %>%
+    filter(clade == clade_i, type == "pango") %>%
+    pull(name) %>%
+    unique()
+  
+  light_color <- alpha(base_color, 0.35)
+  grad_cols <- colorRampPalette(c(light_color, base_color))(length(pango_names))
+  names(grad_cols) <- pango_names
+  
+  grad_cols
+}) %>% 
+  unlist()
 
-# Map over multiple clades
-cladelist <- tibble(
-  clade = c("21K", "21L", "22B", "23A", "24E")
-)
+# Plot
+figure_1 <- ggplot() +
+  
+  # PANGO lineages
+  geom_line(
+    data = plot_data %>% filter(type == "pango"),
+    aes(x = date, y = value, color = name, group = name),
+    linewidth = 0.7,
+    alpha = 0.8
+  ) +
+  
+  # Clade lines (mapped for legend)
+  geom_line(
+    data = plot_data %>% filter(type == "clade"),
+    aes(x = date, y = value, color = clade, linetype = clade),
+    linewidth = 1.4
+  ) +
+  
+  # Color scale (only show PANGOs in color legend)
+  scale_color_manual(
+    values = c(color_map, clade_colors),
+    breaks = names(color_map),
+    name = "PANGO lineage"
+  ) +
+  
+  # Separate clade legend
+  scale_linetype_manual(
+    values = rep("solid", length(cladelist)),
+    labels = paste("Clade", cladelist),
+    name = "Clade"
+  ) +
+  
+  # Fix y-axis
+  scale_y_continuous(limits = c(0, 1)) +
+  
+  # Facet vertically
+  facet_wrap(~clade, ncol = 1) +
+  
+  # Legend styling
+  guides(
+    linetype = guide_legend(
+      override.aes = list(
+        linewidth = 1.5,
+        color = clade_colors
+      )
+    ),
+    color = guide_legend(
+      override.aes = list(linewidth = 0.8)
+    )
+  ) +
+  
+  labs(
+    title = "US Clades vs Constituent PANGO Lineages",
+    x = "Date",
+    y = "Proportion of total sequences"
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "right",
+    panel.grid.minor = element_blank()
+  )
 
-purrr::map(cladelist$clade, plot1fun)
-
+figure_1
 
 ```
+
+#save figure 1
+```{r}
+
+ggsave(
+  filename = "impscov2var_figure_1.jpeg",
+  plot = figure_1,
+  width = 10,
+  height = 6,
+  units = "in"
+)
+
+```
+
+#determine the pango lineages with unique clades
+```{r}
+
+
+metadata %>% group_by()
+
+```
+
+
+
+
 
 <!-- #old code -->
 <!-- #Plot counts of each clade and pango lineage combination  -->
