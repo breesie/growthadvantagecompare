@@ -28,7 +28,8 @@ pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv") %>%
 
 
 #load in metadata from nextstrain 
-#from: 
+#from: https://nextstrain.org/ncov/open/global/6m 
+#accesed march 6th
 metadata <- read_tsv("~/growthadvantagecompare/sequences_static/metadata.tsv") 
 
 
@@ -337,7 +338,34 @@ ggsave(
 ```{r}
 
 
-metadata %>% group_by()
+#count pango lineages with more than 1 unique clade 
+lotsoclades <- metadata %>% 
+  group_by(Nextclade_pango) %>% 
+  summarize(unique_clades = n_distinct(clade_membership)) %>% 
+  filter(unique_clades > 1)
+
+#find names of corresponding 
+metadata %>% 
+  filter(Nextclade_pango %in% lotsoclades$Nextclade_pango) %>% 
+  group_by(Nextclade_pango) %>% 
+  summarise(unique_names = unique(clade_membership))
+
+
+##replicate with other pango lineage column to be sure 
+lotsoclades2 <- metadata %>% 
+  group_by(pango_lineage) %>% 
+  summarize(unique_clades = n_distinct(clade_membership)) %>% 
+  filter(unique_clades > 1)
+
+#find names of corresponding 
+metadata %>% 
+  filter(pango_lineage %in% lotsoclades2$pango_lineage) %>% 
+  group_by(pango_lineage) %>% 
+  summarise(unique_names = unique(clade_membership))
+
+#yes
+
+
 
 ```
 
