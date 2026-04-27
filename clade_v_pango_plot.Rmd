@@ -334,9 +334,9 @@ ggsave(
 
 ```
 
+
 #other figure
 ```{r}
-
 library(tidyverse)
 library(scales)
 
@@ -401,29 +401,66 @@ lineage_rank <- pangos_all %>%
 pangos_all <- pangos_all %>%
   left_join(lineage_rank, by = c("clade", "name"))
 
+
+
 # -----------------------------
-# Build gradient colors (rank-based)
+# Build gradient colors (FIXED + STRONG TOP 3 CONTRAST)
 # -----------------------------
 pango_color_vector <- c()
 
 for (clade in clades) {
-  
-  base_color  <- clade_colors[clade]
-  light_color <- alpha(base_color, 0.25)
-  
-  df <- lineage_rank %>% filter(clade == !!clade)
-  
+
+  base_color <- clade_colors[clade]
+
+  df <- lineage_rank %>% 
+    filter(clade == !!clade) %>%
+    arrange(rank)
+
   n <- nrow(df)
-  
-  cols <- colorRampPalette(c(light_color, base_color))(n)
-  
-  # assign darkest to highest rank
-  cols <- rev(cols)
-  
-  names(cols) <- df$name[order(df$rank)]
-  
+
+  cols <- character(n)
+
+  for (i in seq_len(n)) {
+
+    r <- df$rank[i]
+
+    if (r == 1) {
+
+      # MOST DOMINANT → darkest + most saturated
+      cols[i] <- colorspace::lighten(base_color, 0.1)
+
+    } else if (r == 2) {
+
+      # SECOND → slightly lighter
+      cols[i] <- colorspace::lighten(base_color, 0.40)
+
+    } else if (r == 3) {
+
+      # THIRD → neutral mid tone
+      cols[i] <- colorspace::lighten(base_color, 0.70)
+
+    } else {
+
+      # REST → fade out quickly
+      x <- (r - 3) / max(1, (n - 3))
+
+      cols[i] <- colorspace::lighten(
+        colorspace::desaturate(base_color, amount = 0.4 * x),
+        amount = 0.2 + 0.7 * x
+      )
+    }
+  }
+
+  names(cols) <- df$name
+
   pango_color_vector <- c(pango_color_vector, cols)
 }
+
+# safety cleanup
+pango_color_vector <- pango_color_vector[!duplicated(names(pango_color_vector))]
+
+
+
 
 # -----------------------------
 # Line width mapping
@@ -446,6 +483,9 @@ top_lineages <- lineage_rank %>%
   slice_min(rank, n = top_n) %>%
   pull(name)
 
+pangos_all_top <- pangos_all %>%
+  filter(name %in% top_lineages)
+
 # -----------------------------
 # Plot
 # -----------------------------
@@ -462,10 +502,10 @@ clade_labels <- c(
   "25C" = "25C (XFG)"
 )
 
-ggplot() +
+figure_1_real <- ggplot() +
   
   geom_line(
-    data = pangos_all,
+    data = pangos_all_top,
     aes(x = date,
         y = pangoprop,
         group = name,
@@ -492,6 +532,7 @@ ggplot() +
   
   scale_x_date(
     date_labels = "%b %Y",
+    date_breaks = "3 months",
     expand = expansion(mult = c(0.01, 0.08))
   ) +
   
@@ -499,7 +540,7 @@ ggplot() +
     title = "US Clades and Constituent Pango Lineages",
     x = "Date",
     y = "Proportion of sequences",
-    color = "Most common Pangolins"
+    color = "Most common Pango lineages"
   ) +
   
   theme_minimal(base_size = 13) +
@@ -510,7 +551,23 @@ ggplot() +
   )
 
 
+
+
+
 ```
+
+#save real figure 
+```{r}
+ggsave(
+  filename = "realpscov2var_figure_1.jpeg",
+  plot = figure_1_real,
+  width = 12,
+  height = 6,
+  units = "in"
+)
+
+```
+
 
 ```{r}
 library(tidyverse)
