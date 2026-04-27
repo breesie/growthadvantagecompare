@@ -334,6 +334,276 @@ ggsave(
 
 ```
 
+#other figure
+```{r}
+
+library(tidyverse)
+library(scales)
+
+# -----------------------------
+# Base clade colors
+# -----------------------------
+clade_colors <- c(
+  "21K" = "#1b9e77",
+  "21L" = "#d95f02",
+  "22B" = "#7570b3",
+  "23A" = "#e7298a",
+  "24E" = "#66a61e"
+)
+
+clades <- names(clade_colors)
+
+# -----------------------------
+# Build data (your logic)
+# -----------------------------
+get_clade_data <- function(clade) {
+  
+  mindate <- cladeprops_usa %>% 
+    filter(name == clade) %>% 
+    filter(cladeprop == max(cladeprop, na.rm = TRUE)) %>% 
+    summarise(mindate = min(date) - 150) %>% 
+    pull(mindate)
+  
+  p_in_c <- metadata_clade_pango %>% 
+    filter(clade_membership == clade) %>% 
+    pull(pango_lineage)
+  
+  pangos <- pangoprops_usa %>% 
+    filter(name %in% p_in_c,
+           date >= mindate,
+           date <= mindate + 300) %>%
+    mutate(clade = clade)
+  
+  clade_line <- cladeprops_usa %>% 
+    filter(name == clade,
+           date >= mindate,
+           date <= mindate + 300) %>%
+    mutate(clade = clade)
+  
+  list(pangos = pangos, clade_line = clade_line)
+}
+
+data_list <- map(clades, get_clade_data)
+
+pangos_all <- map_dfr(data_list, "pangos")
+clade_all  <- map_dfr(data_list, "clade_line")
+
+# -----------------------------
+# Rank lineages within clade
+# -----------------------------
+lineage_rank <- pangos_all %>%
+  group_by(clade, name) %>%
+  summarise(max_prop = max(pangoprop, na.rm = TRUE), .groups = "drop") %>%
+  group_by(clade) %>%
+  mutate(rank = rank(-max_prop, ties.method = "first")) %>%
+  ungroup()
+
+pangos_all <- pangos_all %>%
+  left_join(lineage_rank, by = c("clade", "name"))
+
+# -----------------------------
+# Build gradient colors (rank-based)
+# -----------------------------
+pango_color_vector <- c()
+
+for (clade in clades) {
+  
+  base_color  <- clade_colors[clade]
+  light_color <- alpha(base_color, 0.25)
+  
+  df <- lineage_rank %>% filter(clade == !!clade)
+  
+  n <- nrow(df)
+  
+  cols <- colorRampPalette(c(light_color, base_color))(n)
+  
+  # assign darkest to highest rank
+  cols <- rev(cols)
+  
+  names(cols) <- df$name[order(df$rank)]
+  
+  pango_color_vector <- c(pango_color_vector, cols)
+}
+
+# -----------------------------
+# Line width mapping
+# -----------------------------
+pangos_all <- pangos_all %>%
+  mutate(linewidth = scales::rescale(rank,
+                                     to = c(0.4, 1.2),
+                                     from = range(rank, na.rm = TRUE)))
+
+# invert so rank 1 (largest) = thickest
+pangos_all$linewidth <- max(pangos_all$linewidth) - pangos_all$linewidth + min(pangos_all$linewidth)
+
+# -----------------------------
+# Top lineages for legend
+# -----------------------------
+top_n <- 3
+
+top_lineages <- lineage_rank %>%
+  group_by(clade) %>%
+  slice_min(rank, n = top_n) %>%
+  pull(name)
+
+# -----------------------------
+# Plot
+# -----------------------------
+
+#clade names
+
+clade_labels <- c(
+  "21K" = "21K (BA.1)",
+  "21L" = "21L (BA.2)",
+  "22B" = "22B (BA.5)",
+  "23A" = "23A (XBB.1.5)",
+  "24E" = "24E (KP.3.1.1)",
+  "24A" = "24A (JN.1)",
+  "25C" = "25C (XFG)"
+)
+
+ggplot() +
+  
+  geom_line(
+    data = pangos_all,
+    aes(x = date,
+        y = pangoprop,
+        group = name,
+        color = name,
+        linewidth = .7),
+    alpha = 0.7
+  ) +
+  
+  scale_color_manual(
+    values = c(pango_color_vector, clade_colors),
+    breaks = top_lineages
+  ) +
+  
+  scale_linewidth_identity() +
+  
+  # CLade line (strongest)
+  geom_line(
+    data = clade_all,
+    aes(x = date, y = cladeprop, color = clade),
+    linewidth = 1.5
+  ) +
+  
+  facet_wrap(~dplyr::recode(clade, !!!clade_labels), scales = "free_x") +
+  
+  scale_x_date(
+    date_labels = "%b %Y",
+    expand = expansion(mult = c(0.01, 0.08))
+  ) +
+  
+  labs(
+    title = "US Clades and Constituent Pango Lineages",
+    x = "Date",
+    y = "Proportion of sequences",
+    color = "Most common Pangolins"
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
+
+
+```
+
+```{r}
+library(tidyverse)
+library(scales)  # for alpha()
+
+# Assign a base color for each clade
+clade_colors <- c(
+  "21K" = "#1b9e77",
+  "21L" = "#d95f02",
+  "22B" = "#7570b3",
+  "23A" = "#e7298a",
+  "24E" = "#66a61e"
+)
+
+plot1fun <- function(clade) {
+  
+  # get mindate properly
+  mindate <- cladeprops_usa %>% 
+    filter(name == clade) %>% 
+    filter(cladeprop == max(cladeprop, na.rm = TRUE)) %>% 
+    summarise(mindate = min(date) - 150) %>% 
+    pull(mindate)
+  
+  # PANGO lineages in this clade
+  p_in_c <- metadata_clade_pango %>% 
+    filter(clade_membership == clade) %>% 
+    pull(pango_lineage)
+  
+  # Extract plotting data
+  pangos <- pangoprops_usa %>% 
+    filter(name %in% p_in_c, date >= mindate, date <= mindate + 300)
+  
+  clade_line <- cladeprops_usa %>% 
+    filter(name == clade, date >= mindate, date <= mindate + 300)
+  
+  # Base color
+  base_color <- clade_colors[clade]
+  
+  # Generate lighter colors for PANGO lineages
+  pango_lineages <- unique(pangos$name)
+  
+  # Make gradient from a lighter version of the base color → base color
+  light_color <- alpha(base_color, 0.4)  # adjust 0.3–0.5 for visibility
+  pango_colors <- colorRampPalette(c(light_color, base_color))(length(pango_lineages))
+  names(pango_colors) <- pango_lineages
+  
+  # Final plot
+  ggplot() +
+    # PANGO lineages (lighter shades of clade color)
+    geom_line(
+      data = pangos,
+      aes(x = date, y = pangoprop, color = name, group = name),
+      linewidth = 0.7,
+      alpha = 0.7
+    ) +
+    scale_color_manual(values = pango_colors) +
+    
+    # Clade line (bold + darkest)
+    geom_line(
+      data = clade_line,
+      aes(x = date, y = cladeprop),
+      color = base_color,
+      linewidth = 1.2
+    ) +
+    
+    labs(
+      title = paste(clade, "vs Constituent PANGO Lineages"),
+      x = "Date",
+      y = "Proportion",
+      color = "PANGO lineage"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+}
+
+
+
+# Map over multiple clades
+cladelist <- tibble(
+  clade = c("21K", "21L", "22B", "23A", "24E")
+)
+
+purrr::map(cladelist$clade, plot1fun)
+
+
+```
+
+
+
 #determine the pango lineages with unique clades
 ```{r}
 
