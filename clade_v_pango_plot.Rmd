@@ -337,195 +337,42 @@ ggsave(
 
 #other figure
 ```{r}
-library(tidyverse)
-library(scales)
-
-# -----------------------------
-# Base clade colors
-# -----------------------------
-clade_colors <- c(
-  "21K" = "#1b9e77",
-  "21L" = "#d95f02",
-  "22B" = "#7570b3",
-  "23A" = "#e7298a",
-  "24E" = "#66a61e"
-)
-
-clades <- names(clade_colors)
-
-# -----------------------------
-# Build data (your logic)
-# -----------------------------
-get_clade_data <- function(clade) {
-  
-  mindate <- cladeprops_usa %>% 
-    filter(name == clade) %>% 
-    filter(cladeprop == max(cladeprop, na.rm = TRUE)) %>% 
-    summarise(mindate = min(date) - 150) %>% 
-    pull(mindate)
-  
-  p_in_c <- metadata_clade_pango %>% 
-    filter(clade_membership == clade) %>% 
-    pull(pango_lineage)
-  
-  pangos <- pangoprops_usa %>% 
-    filter(name %in% p_in_c,
-           date >= mindate,
-           date <= mindate + 300) %>%
-    mutate(clade = clade)
-  
-  clade_line <- cladeprops_usa %>% 
-    filter(name == clade,
-           date >= mindate,
-           date <= mindate + 300) %>%
-    mutate(clade = clade)
-  
-  list(pangos = pangos, clade_line = clade_line)
-}
-
-data_list <- map(clades, get_clade_data)
-
-pangos_all <- map_dfr(data_list, "pangos")
-clade_all  <- map_dfr(data_list, "clade_line")
-
-# -----------------------------
-# Rank lineages within clade
-# -----------------------------
-lineage_rank <- pangos_all %>%
-  group_by(clade, name) %>%
-  summarise(max_prop = max(pangoprop, na.rm = TRUE), .groups = "drop") %>%
-  group_by(clade) %>%
-  mutate(rank = rank(-max_prop, ties.method = "first")) %>%
-  ungroup()
-
-pangos_all <- pangos_all %>%
-  left_join(lineage_rank, by = c("clade", "name"))
-
-
-
-# -----------------------------
-# Build gradient colors (FIXED + STRONG TOP 3 CONTRAST)
-# -----------------------------
-pango_color_vector <- c()
-
-for (clade in clades) {
-
-  base_color <- clade_colors[clade]
-
-  df <- lineage_rank %>% 
-    filter(clade == !!clade) %>%
-    arrange(rank)
-
-  n <- nrow(df)
-
-  cols <- character(n)
-
-  for (i in seq_len(n)) {
-
-    r <- df$rank[i]
-
-    if (r == 1) {
-
-      # MOST DOMINANT → darkest + most saturated
-      cols[i] <- colorspace::lighten(base_color, 0.1)
-
-    } else if (r == 2) {
-
-      # SECOND → slightly lighter
-      cols[i] <- colorspace::lighten(base_color, 0.40)
-
-    } else if (r == 3) {
-
-      # THIRD → neutral mid tone
-      cols[i] <- colorspace::lighten(base_color, 0.70)
-
-    } else {
-
-      # REST → fade out quickly
-      x <- (r - 3) / max(1, (n - 3))
-
-      cols[i] <- colorspace::lighten(
-        colorspace::desaturate(base_color, amount = 0.4 * x),
-        amount = 0.2 + 0.7 * x
-      )
-    }
-  }
-
-  names(cols) <- df$name
-
-  pango_color_vector <- c(pango_color_vector, cols)
-}
-
-# safety cleanup
-pango_color_vector <- pango_color_vector[!duplicated(names(pango_color_vector))]
-
-
-
-
-# -----------------------------
-# Line width mapping
-# -----------------------------
-pangos_all <- pangos_all %>%
-  mutate(linewidth = scales::rescale(rank,
-                                     to = c(0.4, 1.2),
-                                     from = range(rank, na.rm = TRUE)))
-
-# invert so rank 1 (largest) = thickest
-pangos_all$linewidth <- max(pangos_all$linewidth) - pangos_all$linewidth + min(pangos_all$linewidth)
-
-# -----------------------------
-# Top lineages for legend
-# -----------------------------
-top_n <- 3
-
-top_lineages <- lineage_rank %>%
-  group_by(clade) %>%
-  slice_min(rank, n = top_n) %>%
-  pull(name)
-
-pangos_all_top <- pangos_all %>%
-  filter(name %in% top_lineages)
-
-# -----------------------------
-# Plot
-# -----------------------------
-
-#clade names
-
-clade_labels <- c(
-  "21K" = "21K (BA.1)",
-  "21L" = "21L (BA.2)",
-  "22B" = "22B (BA.5)",
-  "23A" = "23A (XBB.1.5)",
-  "24E" = "24E (KP.3.1.1)",
-  "24A" = "24A (JN.1)",
-  "25C" = "25C (XFG)"
-)
-
 figure_1_real <- ggplot() +
   
+  # Pango lineages (color legend)
   geom_line(
     data = pangos_all_top,
     aes(x = date,
         y = pangoprop,
         group = name,
-        color = name,
-        linewidth = .7),
+        color = name),
+    linewidth = 0.7,
     alpha = 0.7
   ) +
   
-  scale_color_manual(
-    values = c(pango_color_vector, clade_colors),
-    breaks = top_lineages
-  ) +
-  
-  scale_linewidth_identity() +
-  
-  # CLade line (strongest)
+  # Clade lines (separate legend via linetype)
   geom_line(
     data = clade_all,
-    aes(x = date, y = cladeprop, color = clade),
+    aes(x = date,
+        y = cladeprop,
+        linetype = clade,
+        color = clade),
     linewidth = 1.5
+  ) +
+  
+  # Color scale (ONLY lineages)
+  scale_color_manual(
+    values = c(pango_color_vector, clade_colors),
+    breaks = top_lineages,
+    name = "Top Pango lineages"
+  ) +
+  
+  # Linetype scale (CLADES get their own legend)
+  scale_linetype_manual(
+    values = rep("solid", length(clades)),
+    breaks = clades,
+    labels = clade_labels[clades],
+    name = "Clades"
   ) +
   
   facet_wrap(~dplyr::recode(clade, !!!clade_labels), scales = "free_x") +
@@ -539,8 +386,15 @@ figure_1_real <- ggplot() +
   labs(
     title = "US Clades and Constituent Pango Lineages",
     x = "Date",
-    y = "Proportion of sequences",
-    color = "Most common Pango lineages"
+    y = "Proportion of sequences"
+  ) +
+  
+  guides(
+    color = guide_legend(order = 1),
+    linetype = guide_legend(
+      order = 2,
+      override.aes = list(linewidth = 1.5, color = clade_colors)
+    )
   ) +
   
   theme_minimal(base_size = 13) +
@@ -550,14 +404,15 @@ figure_1_real <- ggplot() +
     legend.position = "right"
   )
 
-
-
+figure_1_real
 
 
 ```
 
 #save real figure 
 ```{r}
+
+
 ggsave(
   filename = "realpscov2var_figure_1.jpeg",
   plot = figure_1_real,
@@ -671,11 +526,13 @@ lotsoclades <- metadata %>%
   summarize(unique_clades = n_distinct(clade_membership)) %>% 
   filter(unique_clades > 1)
 
+
+
 #find names of corresponding 
 metadata %>% 
   filter(Nextclade_pango %in% lotsoclades$Nextclade_pango) %>% 
   group_by(Nextclade_pango) %>% 
-  summarise(unique_names = unique(clade_membership))
+  list(unique_names = unique(clade_membership))
 
 
 ##replicate with other pango lineage column to be sure 
