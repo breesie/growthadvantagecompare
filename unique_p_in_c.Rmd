@@ -1,0 +1,90 @@
+---
+title: "unique_p_in_c"
+output: html_document
+---
+
+"This .rmd was made to document the occurrences of pango belonging to multiple clades, this was first noticed in this github post on the variant nowcast hub (scroll down to see screenshots), where very clearly, there are multiple clades assigned to pango lineages"
+https://github.com/reichlab/variant-nowcast-hub/discussions/101
+
+#metadata accessed 3/6/2026 (paper metadata)
+#from: https://nextstrain.org/ncov/open/global/6m 
+```{r}
+
+#load in 3/6/2026 metadata (original)
+metadata_3.6.2026 <- read_tsv("~/growthadvantagecompare/sequences_static/metadata.tsv") 
+
+
+#count pango lineages with more than 1 unique clade 
+lotsoclades1 <- metadata_3.6.2026 %>% 
+  group_by(pango_lineage) %>% 
+summarize(clades = n_distinct(clade_membership)) %>% 
+  filter(clades >= 2) #filter  clade_membership greater than 2
+
+unique_metadata_3.6.2026 <- metadata_3.6.2026 %>% 
+  filter(pango_lineage %in% lotsoclades1$pango_lineage) %>% #filter metadata for only pango lineages with more than two clades
+  group_by(pango_lineage) %>%
+  summarise(unique_clades = paste(unique(clade_membership), collapse = ", "), .groups = "drop") #summarize in separate column
+
+
+unique_metadata_3.6.2026
+
+
+####repeat process with Nextclade_pango column (presumably the nextstrain groups in house pango lineage assignment tool)
+
+#count pango lineages with more than 1 unique clade 
+lotsoclades1.1 <- metadata_3.6.2026 %>% 
+  group_by(Nextclade_pango) %>% 
+summarize(clades = n_distinct(clade_membership)) %>% 
+  filter(clades >= 2) #filter  clade_membership greater than 2
+
+ unique_metadata_3.6.2026_1.1 <- metadata_3.6.2026 %>% 
+  filter(Nextclade_pango %in% lotsoclades1.1$Nextclade_pango) %>% #filter metadata for only pango lineages with more than two clades
+  group_by(Nextclade_pango) %>%
+  summarise(unique_clades = paste(unique(clade_membership), collapse = ", "), .groups = "drop") #summarize in separate column
+
+ 
+ unique_metadata_3.6.2026 #unique clades per pango lineage using pango_lineage column
+ unique_metadata_3.6.2026_1.1 #unique clades per pango lineage using Nextclade_pango column
+
+```
+#metadata accessed 3/6/2026 (paper metadata)
+#from: https://nextstrain.org/ncov/open/global/6m 
+```{r}
+
+#load in 3/6/2026 metadata (original)
+metadata_3.6.2026 <- read_tsv("~/growthadvantagecompare/sequences_static/metadata.tsv") 
+
+
+#count pango lineages with more than 1 unique clade 
+lotsoclades1 <- metadata_3.6.2026 %>% 
+  group_by(pango_lineage) %>% 
+summarize(clades = n_distinct(clade_membership)) %>% 
+  filter(clades >= 2) #filter  clade_membership greater than 2
+
+unique_metadata_3.6.2026 <- metadata_3.6.2026 %>% 
+  filter(pango_lineage %in% lotsoclades1$pango_lineage) %>% #filter metadata for only pango lineages with more than two clades
+  group_by(pango_lineage) %>%
+  summarise(unique_clades = paste(unique(clade_membership), collapse = ", "), .groups = "drop") #summarize in separate column
+
+
+unique_metadata_3.6.2026
+
+
+####repeat process with Nextclade_pango column (presumably the nextstrain groups in house pango lineage assignment tool)
+
+#count pango lineages with more than 1 unique clade 
+lotsoclades1.1 <- metadata_3.6.2026 %>% 
+  group_by(Nextclade_pango) %>% 
+summarize(clades = n_distinct(clade_membership)) %>% 
+  filter(clades >= 2) #filter  clade_membership greater than 2
+
+ unique_metadata_3.6.2026_1.1 <- metadata_3.6.2026 %>% 
+  filter(Nextclade_pango %in% lotsoclades1.1$Nextclade_pango) %>% #filter metadata for only pango lineages with more than two clades
+  group_by(Nextclade_pango) %>%
+  summarise(unique_clades = paste(unique(clade_membership), collapse = ", "), .groups = "drop") #summarize in separate column
+
+ 
+ unique_metadata_3.6.2026 #unique clades per pango lineage using pango_lineage column
+ unique_metadata_3.6.2026_1.1 #unique clades per pango lineage using Nextclade_pango column
+
+```
