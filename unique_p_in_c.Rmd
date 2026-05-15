@@ -118,4 +118,17 @@ summarize(clades = n_distinct(clade_membership)) %>%
  unique_metadata3 #unique clades per pango lineage using pango_lineage column
  unique_metadata3.1 #unique clades per pango lineage using Nextclade_pango column
 ```
+#Save most recent table 
+```{r}
+table_2 <- unique_metadata3 %>% 
+  rename("Pango lineage" = 1,
+         "Unique clades" = 2) %>% 
+  gt() %>% 
+  tab_header(
+    title = "Pango lineages with more than one assigned clade",
+    subtitle = "From: https://nextstrain.org/ncov/open/global/6m, accessed 5/6/2026"
+  )
+
+gtsave(table_2, "table_2.png")
+```
 
