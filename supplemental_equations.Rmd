@@ -7,6 +7,8 @@ output: html_document
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
+library(nnet)
+library(purrr)
 ```
 
 Supplemental equations + semi toy example calculating growth rates and transmission advantages logistic and multinomial variant nowcast models. 
@@ -16,9 +18,9 @@ Supplemental equations + semi toy example calculating growth rates and transmiss
 ##1a. Logistic growth equation
 Adopted from Chen et al., 2021 and Althaus et al., 
 $$
-p_v(t) = \frac{1}{1 + e^{-\beta(t - t_0)}} \tag{1a.}
+p_v(t) = \frac{1}{1 + \exp{(-\beta_v(t - t_0))}} \tag{1a.}
 $$
-Where $p_v(t)$ is the proportion of the variant at time $t$ days, and $\beta variant$ is the exponential growth rate and $t0$ is the sigmoid midpoint.
+Where $p_v(t)$ is the proportion of the variant at time $t$ days, and $\beta_v$ is the variants exponential growth rate and $t0$ is the sigmoid midpoint.
 
 
 ###Example
@@ -101,18 +103,18 @@ ggplot(pangoprops_input, aes(date, pangoprop)) +
   scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
   labs(x = NULL, y = "Proportion of sequences", size = "Total sequences",
        title = "B.1.1.7 in the USA with logistic fit",
-       subtitle = sprintf("a = %.3f per day; dashed line = 50%% (t0)", a)) +
+       subtitle = sprintf("beta = %.3f per day; dashed line = 50%% (t0)", beta)) +
   theme_minimal()
 ```
 
 
-##1b. Logistic growth advantage 
+##1b. Growth advantage 
 Assuming a fixed generation time of $g$, the transmission advantage, or $\Delta_v$ is the $R_t$ of the novel variant over all other variants ie $R_tnovel/R_tbackground$
 
 Chen et al., 2021 uses this parameterization, as do Abousamra et al ., 2024 in the multinomial expansion.
 
 $$
-\Delta_v = e^{\beta g} = \frac{R_{t,\text{novel}}}{R_{t,\text{background}}} \tag{1b.}
+\Delta_v = e^{\beta_v* g} = \frac{R_{t,\text{novel}}}{R_{t,\text{background}}} \tag{1b.}
 $$
 ###Example
 ```{r}
@@ -121,8 +123,7 @@ deltav_fun <- function(beta, g){
   exp(beta*g)
 }
 
-#Lets choose the most generation time most recently estimated (even though this is probably a bad assumption)
-#Hart, W. S. et al.,2022
+#Hart, W. S. et al.,2022 gt of 5.5
 
 g <- 5.5
 
@@ -134,4 +135,141 @@ delta_b117
 ```
 
 #2.Multinomial growth
+
+##2a. Multinomial growth equation
+Adapted from Abousamra et al ., 2024
+$$
+
+p_v(t) = \frac{\exp({f_{0,v} + \beta_v t})}{\sum_{k=1}^K\exp({f_{0,k} + \beta_k t)}} \tag{2b.}
+
+$$
+Where $p_v(t)$ is the proportion of the variant at time $t$ days, and $\beta_v$ is the exponential growth rate, $f_0,v$ and $f_0,k$ are the log initial frequencies of variants v and k, respectively, relative to a reference variant. The denominator is the sum of all variants to $K$ variants.
+
+###Example 
+```{r}
+#Lets find the most prevalent variants using the same time window as before
+#Set number of variants to model / group
+K_variants <- 3
+
+top_K <- pangoprops_usa %>%
+  filter(location == "USA",
+         date > as.Date("2020-08-20") & date < as.Date("2020-12-20")) %>%
+  group_by(name) %>%
+  summarise(total_seq = sum(sequences)) %>%
+  slice_max(total_seq, n = K_variants) %>%
+  pull(name)
+
+#peak date for B117
+peak_date <- pangoprops_usa %>%
+  filter(location == "USA", name == "B.1.1.7",
+         date > as.Date("2020-08-20"), totn >= 50) %>%
+  slice_max(pangoprop, n = 1, with_ties = FALSE) %>%
+  pull(date)
+
+
+
+lineages_to_show <- unique(c(top_K, "B.1.1.7"))
+lineages_to_show   
+
+
+#Group all variants as other if not present in top K
+#This is the "grouping" that makes comparisons between model outputs challenging
+# "Other" was grouped in a subjective way, this is decided based on jurisdiction
+
+pangoprops2_input <- pangoprops_usa %>%
+  filter(location == "USA", date > as.Date("2020-08-20"), date <= peak_date) %>%
+  mutate(name = if_else(name %in% lineages_to_show, name, "Other")) %>%
+  group_by(date, name) %>%
+  summarise(sequences = sum(sequences), totn = first(totn), .groups = "drop") %>%
+  complete(nesting(date, totn), name, fill = list(sequences = 0)) %>%
+  mutate(t = as.numeric(date - min(date)),
+         pangoprop = sequences / totn) %>%
+  arrange(t, name) 
+
+
+pangoprops2_input %>%
+  ggplot(aes(date, pangoprop, colour = name)) +
+  geom_point(aes(size = totn), alpha = 0.3) +
+  scale_size_area(max_size = 2.5) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = NULL, y = "Proportion of sequences", size = "Total sequences",
+       colour = "Lineage",
+       title = "SARS-CoV-2 lineages in the USA, 2020-08-20 to B.1.1.7 peak") +
+  theme_minimal()
+
+
+#Use nnet to estimate the parameters
+#choose B.1 as our reference variable using factor
+
+multinom_fit <- multinom(name ~ t, data = (pangoprops2_input %>%
+  mutate(name = relevel(factor(name), ref = "B.1"))),                       weights = sequences, 
+ maxit = 1000) 
+
+#extract the parameters 
+params <- data.frame(
+  lineage = c("B.1", rownames(coef(multinom_fit))),
+  f0_multi      = c(0, coef(multinom_fit)[, "(Intercept)"]),
+  beta_multi    = c(0, coef(multinom_fit)[, "t"])
+)
+
+
+#write the multinomial function from 2b.
+multinom_fun_so_fun <- function(f0, beta, t){
+  
+  return(exp(f0 + beta*t)/sum(exp(f0 + beta*t))) #for every f0 and beta, multiply by t 
+  
+}
+
+t_grid <- seq(0, max(pangoprops2_input$t, by = 1))
+
+
+#map over every value of t using the parameters nnet estimated
+multinom_out <- purrr::map(t_grid, ~ tibble(
+    t       = .,
+    lineage = params$lineage,
+    fitted  = multinom_fun_so_fun(f0 = params$f0_multi,
+                                  beta = params$beta_multi,
+                                  t = .)
+  )) %>%
+  purrr::list_rbind()
+
+
+multinom_out <- multinom_out %>%
+  rename(name = lineage) %>%
+  mutate(date = min(pangoprops2_input$date) + t)
+
+ggplot() +
+  geom_point(data = pangoprops2_input,
+             aes(date, pangoprop, colour = name, size = totn), alpha = 0.2) +
+  geom_line(data = multinom_out,
+            aes(date, fitted, colour = name), linewidth = 1) +
+  scale_size_area(max_size = 2.5) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = NULL, y = "Proportion of sequences", colour = "Lineage",
+       size = "Total sequences",
+       title = "SARS-CoV-2 lineages in the USA with multinomial fit") +
+  theme_minimal()
+
+#lets find the growth advantages of all the variants vs B.1 
+
+g <- 5.5 #generation time 
+
+delta_muti <- data.frame(delta_v = deltav_fun(params$beta_multi, g),
+           variant = params$lineage)
+
+
+delta_muti
+
+#B117 is 1.42 times more transmissible than B.1 in the multinomial model
+```
+
+
+
+
+
+
+
+
+
+
 
