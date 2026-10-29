@@ -1,0 +1,137 @@
+---
+title: "supplemental_equations"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+```
+
+Supplemental equations + semi toy example calculating growth rates and transmission advantages logistic and multinomial variant nowcast models. 
+
+#1.Simple Logistic growth
+
+##1a. Logistic growth equation
+Adopted from Chen et al., 2021 and Althaus et al., 
+$$
+p_v(t) = \frac{1}{1 + e^{-\beta(t - t_0)}} \tag{1a.}
+$$
+Where $p_v(t)$ is the proportion of the variant at time $t$ days, and $\beta variant$ is the exponential growth rate and $t0$ is the sigmoid midpoint.
+
+
+###Example
+We can use NLS to directly input the function and have it estimate parameters. 
+```{r}
+#read in PANGO sequences 
+pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv") %>% 
+  mutate(variant = "pango") %>% 
+  rename(name = clade)
+
+pangototn_usa <- pangonum %>% filter(location == "USA") %>% 
+  group_by(date) %>% summarise(totn = sum(sequences)) %>% 
+  mutate("variant" = "pango")
+
+#proportions of each clade and pango lineage by day 
+pangoprops_usa <- left_join(pangototn_usa, pangonum %>% filter(location == "USA"), by = "date") %>% 
+ mutate(pangoprop = sequences/totn) 
+
+#plot B.1.1.7
+
+pangoprops_usa %>%
+  filter(location == "USA", name == "B.1.1.7", date > as.Date("2020-08-20")) %>%
+  arrange(date) %>%
+  filter(date <= date[which.max(pangoprop)]) %>%
+  ggplot(aes(date, pangoprop)) +
+  geom_point(aes(size = totn), alpha = 0.2, colour = "#2166ac") +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = NULL, y = "Proportion of sequences", size = "Total sequences",
+       title = "B.1.1.7 in the USA, rise to peak beginning 2020-08-20") +
+  theme_minimal()
+
+#Convert to useable df 
+pangoprops_input<- pangoprops_usa %>%
+  filter(location == "USA", name == "B.1.1.7", date > as.Date("2020-08-20")) %>% 
+   filter(date <= date[which.max(pangoprop)]) %>% #also filter date to only include max proportion date
+ mutate(t = as.numeric(date - min(date))) %>% 
+  arrange(t) %>% 
+  select(date, t, name, totn, pangoprop)
+
+#Write the function
+
+#p_v(t) = 1/ (1 + exp(-beta * (t - t0))
+#p(-Vt) is our input ie pangoprop or the proportion of variant B117 at time t, or p(day)
+#we guess that the beta (growth rate) is .05, this is where the function starts searching 
+
+nfit <- nls(pangoprop ~ 1 / (1 + exp(-beta * (t - t0))),
+            data    = pangoprops_input,
+            start   = list(beta = 0.05, t0 = max(pangoprops_input$t) / 2), 
+            weights = totn)
+
+#Model outputs
+
+coef(nfit)                 
+beta  <- coef(nfit)[["beta"]] #so we get growth to be .036 per day, this is about half what chen and washington et al., get, one of the problems is that with incomplete variant information, the logistic functions assume that the growing variant will always reach 100%, which overestimates the growth rate 
+
+t0 <- coef(nfit)[["t0"]]
+
+t_grid<- seq(0, max(pangoprops_input$t, by = 1)) #making a grid of times using the t from our data
+
+#lets plug these back into a function and plot the fit 
+
+logistic_fun_so_fun <- function(beta, t, t0){
+  
+  return(1 / (1 + exp(-beta * (t - t0))))
+  
+}
+
+fit_df <- data.frame(
+  t    = t_grid,
+  date = min(pangoprops_input$date) + t_grid,
+  fit  = logistic_fun_so_fun(beta = beta, t = t_grid, t0 = t0)
+)
+
+
+ggplot(pangoprops_input, aes(date, pangoprop)) +
+  geom_point(aes(size = totn), alpha = 0.4, colour = "#2166ac") +
+  geom_line(data = fit_df, aes(date, fit), linewidth = 1, colour = "#b2182b") +
+  geom_vline(xintercept = min(pangoprops_input$date) + t0,
+             linetype = "dashed", colour = "grey40") +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = NULL, y = "Proportion of sequences", size = "Total sequences",
+       title = "B.1.1.7 in the USA with logistic fit",
+       subtitle = sprintf("a = %.3f per day; dashed line = 50%% (t0)", a)) +
+  theme_minimal()
+```
+
+
+##1b. Logistic growth advantage 
+Assuming a fixed generation time of $g$, the transmission advantage, or $\Delta_v$ is the $R_t$ of the novel variant over all other variants ie $R_tnovel/R_tbackground$
+
+Chen et al., 2021 uses this parameterization, as do Abousamra et al ., 2024 in the multinomial expansion.
+
+$$
+\Delta_v = e^{\beta g} = \frac{R_{t,\text{novel}}}{R_{t,\text{background}}} \tag{1b.}
+$$
+###Example
+```{r}
+
+deltav_fun <- function(beta, g){
+  exp(beta*g)
+}
+
+#Lets choose the most generation time most recently estimated (even though this is probably a bad assumption)
+#Hart, W. S. et al.,2022
+
+g <- 5.5
+
+delta_b117 <- deltav_fun(beta = beta, g = g)
+
+delta_b117
+
+#B117 is 1.22 times as transmissible as circulating background variants 
+```
+
+#2.Multinomial growth
+
