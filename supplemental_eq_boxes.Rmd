@@ -24,7 +24,7 @@ Where the number of observations of our variant of interest (for example, PANGO 
 \[
 p_v(t) = \frac{1}{1 + \exp\left(-\beta_v (t - t_0)\right)} \tag{S2}
 \]
-Where $p_v(t)$ is the proportion of sequences that are variant $v$ at time $t$, and $\beta_v$ is the variant's logistic growth rate relative to all other background variants and $t_0$ is the sigmoid midpoint. Time is the only covariate.
+Where $p_v(t)$ is the proportion of sequences that are variant $v$ at time $t$, and $\beta_v$ is the variant's logistic growth rate relative to all other background variants and $t_0$ is the sigmoid midpoint. 
 \end{minipage}}
 \end{center}
 
@@ -33,7 +33,7 @@ Where $p_v(t)$ is the proportion of sequences that are variant $v$ at time $t$, 
 \textbf{Supplementary Box 2. Transmission advantage}
 
 \medskip
-Assuming a fixed generation time of $g$, the transmission advantage, or $\Delta_v$, is the $R_t$ of the novel variant over all other variants, i.e. $R_{t,\text{novel}}/R_{t,\text{background}}$. Chen et al., 2021 uses this parameterization, as do Abousamra et al., 2024 in the multinomial expansion.
+Assuming a fixed generation time of $g$, the transmission advantage, or $\Delta_v$, is the $R_t$ of the novel variant over all other variants, i.e. $R_{t,\text{novel}}/R_{t,\text{background}}$. 
 \[
 \Delta_v = \exp{(\beta_v g)} = \frac{R_{t,\text{novel}}}{R_{t,\text{background}}} \tag{S3}
 \]
@@ -43,7 +43,7 @@ Where $g$ is usually a generation time point estimate, in the same time units as
 
 \begin{center}
 \fbox{\begin{minipage}{0.94\linewidth}
-\textbf{Supplementary Box 3. Multinomial growth equation}
+\textbf{Supplementary Box 3. Multinomial growth}
 
 \smallskip
 \textit{Adapted from Abousamra et al., 2024}
