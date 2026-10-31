@@ -3,7 +3,7 @@ title: "supplemental_eq_boxes"
 output: pdf_document
 ---
 
-\textbf{Supplementary Note 1. Models of variant nowcasting}
+\textbf{Supplementary Equations: Models of variant nowcasting}
 
 \begin{center}
 \fbox{\begin{minipage}{0.94\linewidth}
@@ -30,20 +30,7 @@ Where $p_v(t)$ is the proportion of sequences that are variant $v$ at time $t$, 
 
 \begin{center}
 \fbox{\begin{minipage}{0.94\linewidth}
-\textbf{Supplementary Box 2. Transmission advantage}
-
-\medskip
-Assuming a fixed generation time of $g$, the transmission advantage, or $\Delta_v$, is the $R_t$ of the novel variant over all other variants, i.e. $R_{t,\text{novel}}/R_{t,\text{background}}$. 
-\[
-\Delta_v = \exp{(\beta_v g)} = \frac{R_{t,\text{novel}}}{R_{t,\text{background}}} \tag{S3}
-\]
-Where $g$ is usually a generation time point estimate, in the same time units as $\beta_v$. In the multinomial model, the transmission advantage becomes $R_{t,\text{novel variant}}/R_{t,\text{reference variant}}$.
-\end{minipage}}
-\end{center}
-
-\begin{center}
-\fbox{\begin{minipage}{0.94\linewidth}
-\textbf{Supplementary Box 3. Multinomial growth}
+\textbf{Supplementary Box 2. Multinomial growth}
 
 \smallskip
 \textit{Adapted from Abousamra et al., 2024}
@@ -51,15 +38,28 @@ Where $g$ is usually a generation time point estimate, in the same time units as
 \medskip
 \textbf{Sequence observation process}
 \[
-\left(n_1(t), \dots, n_K(t)\right) \sim \text{Multinomial}\left(N(t);\ p_1(t), \dots, p_K(t)\right) \tag{S4}
+\left(n_1(t), \dots, n_K(t)\right) \sim \text{Multinomial}\left(N(t);\ p_1(t), \dots, p_K(t)\right) \tag{S3}
 \]
 Where $n_k(t)$ is the number of sequences of variant $k$ at time $t$, for each of the $K$ variants ($k = 1, \dots, K$), $N(t)$ is the number of sequences collected at $t$, and $p_k(t)$ is the expected proportion of sequences at $t$ that are variant $k$ (equivalently, the probability that a given sequence is variant $k$). The variant of interest $v$ is one of these $K$ variants.
 
 \medskip
 \textbf{Variant frequency multinomial model}
 \[
-p_v(t) = \frac{\exp(f_{0,v} + \beta_v t)}{\sum_{k=1}^{K} \exp(f_{0,k} + \beta_k t)} \tag{S5}
+p_v(t) = \frac{\exp(f_{0,v} + \beta_v t)}{\sum_{k=1}^{K} \exp(f_{0,k} + \beta_k t)} \tag{S4}
 \]
 Where $p_v(t)$ is the expected proportion of sequences that are variant $v$ at time $t$, and $\beta_v$ is the logistic growth rate of variant $v$ relative to the reference variant, $f_{0,v}$ and $f_{0,k}$ are the log initial frequencies of variants $v$ and $k$, respectively, relative to a reference variant, which has $\beta$ and $f_0$ set to zero.
+\end{minipage}}
+\end{center}
+
+\begin{center}
+\fbox{\begin{minipage}{0.94\linewidth}
+\textbf{Supplementary Box 3. Transmission advantage}
+
+\medskip
+Assuming a fixed generation time of $g$, the transmission advantage, or $\Delta_v$, is the $R_t$ of the novel variant over all other variants, i.e. $R_{t,\text{novel}}/R_{t,\text{background}}$. 
+\[
+\Delta_v = \exp{(\beta_v g)} = \frac{R_{t,\text{novel}}}{R_{t,\text{background}}} \tag{S5}
+\]
+Where $g$ is usually a generation time point estimate, in the same time units as $\beta_v$, and is shared by the novel and reference or background variants. In the multinomial model, the transmission advantage becomes $R_{t,\text{variant }k}/R_{t,\text{reference variant}}$.
 \end{minipage}}
 \end{center}
