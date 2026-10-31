@@ -280,7 +280,7 @@ ggplot() +
        title = "SARS-CoV-2 lineages in the USA with multinomial fit") +
   theme_minimal()
 
-#Lets find the growth advantages of B.1.1.7 variants vs B.1 
+#Lets find the growth advantage of B.1.1.7 vs B.1 
 
 g <- 5.5 #Generation time 
 
