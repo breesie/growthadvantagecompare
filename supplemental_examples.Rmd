@@ -1,5 +1,5 @@
 ---
-title: "supplemental_equations"
+title: "supplemental_examples"
 output:
   pdf_document: default
   html_document: default
@@ -14,7 +14,6 @@ library(purrr)
 ```
 
 Supplemental equations + semi toy example calculating growth rates and transmission advantages logistic and multinomial variant nowcast models. 
-
 
 
 #Supplementary Box 1. Logistic growth
@@ -34,10 +33,18 @@ p_v(t) = \frac{1}{1 + \exp{(-\beta_v(t - t_0))}}
 $$
 Where $p_v(t)$ is the proportion of sequences that are variant $v$ at time $t$, and $\beta_v$ is the variant's logistic growth rate relative to all other background variants and $t_0$ is the sigmoid midpoint. 
 
-###Example
-We can use NLS to directly input the function and have it estimate parameters. 
 ```{r}
-#read in PANGO sequences 
+Var_freq_logistic_model <- function(beta, t, t0){
+
+  return(1 / (1 + exp(-beta * (t - t0))))
+  
+}
+```
+
+
+###Example
+```{r}
+#Read in PANGO sequences from nextstrain
 pangonum <- read_tsv("~/growthadvantagecompare/sequences_static/global.tsv") %>% 
   mutate(variant = "pango") %>% 
   rename(name = clade)
@@ -46,12 +53,11 @@ pangototn_usa <- pangonum %>% filter(location == "USA") %>%
   group_by(date) %>% summarise(totn = sum(sequences)) %>% 
   mutate("variant" = "pango")
 
-#proportions of each clade and pango lineage by day 
+#Get proportions / day ie p_v(t)
 pangoprops_usa <- left_join(pangototn_usa, pangonum %>% filter(location == "USA"), by = "date") %>% 
  mutate(pangoprop = sequences/totn) 
 
-#plot B.1.1.7
-
+#Plot B.1.1.7
 pangoprops_usa %>%
   filter(location == "USA", name == "B.1.1.7", date > as.Date("2020-08-20")) %>%
   arrange(date) %>%
@@ -71,41 +77,41 @@ pangoprops_input<- pangoprops_usa %>%
   arrange(t) %>% 
   select(date, t, name, totn, pangoprop)
 
-#Write the function
-
+#Write the variant frequency logistic function
 #p_v(t) = 1/ (1 + exp(-beta * (t - t0))
-#p(-Vt) is our input ie pangoprop or the proportion of variant B117 at time t, or p(day)
+#p_v(t) is our input ie pangoprop or the proportion of variant B117 at time t, or p(day)
 #we guess that the beta (growth rate) is .05, this is where the function starts searching 
+#Alternatively, parameters can be estimated using glm:
+# gfit <- glm(pangoprop ~ t,
+#             family  = binomial(link = "logit"),
+#             weights = totn,
+#             data    = pangoprops_input)
 
+
+#Fit
 nfit <- nls(pangoprop ~ 1 / (1 + exp(-beta * (t - t0))),
             data    = pangoprops_input,
             start   = list(beta = 0.05, t0 = max(pangoprops_input$t) / 2), 
             weights = totn)
 
 #Model outputs
-
 coef(nfit)                 
-beta  <- coef(nfit)[["beta"]] #so we get growth to be .036 per day, this is about half what chen and washington et al., get, one of the problems is that with incomplete variant information, the logistic functions assume that the growing variant will always reach 100%, which underestimates the growth rate 
+beta  <- coef(nfit)[["beta"]] 
+
+#We get the growth rate to be .036 per day, this is about half what chen and washington et al., get. Our data are fully backfilled, so we know now that B117 did not reach 100% prevalence. As we are fitting to ~75% prevalence, the growth rate we get will be lower.  
 
 t0 <- coef(nfit)[["t0"]]
 
-t_grid<- seq(0, max(pangoprops_input$t, by = 1)) #making a grid of times using the t from our data
+t_grid<- seq(0, max(pangoprops_input$t, by = 1)) #Making a grid of times using the t from our data
 
-#lets plug these back into a function and plot the fit 
-
-logistic_fun_so_fun <- function(beta, t, t0){
-  
-  return(1 / (1 + exp(-beta * (t - t0))))
-  
-}
-
+#Lets plug the estimated parameters back into the vaiant frequency logistic model function from Supplementary box 1 and plot the fit 
 fit_df <- data.frame(
   t    = t_grid,
   date = min(pangoprops_input$date) + t_grid,
-  fit  = logistic_fun_so_fun(beta = beta, t = t_grid, t0 = t0)
+  fit  = Var_freq_logistic_model(beta = beta, t = t_grid, t0 = t0)
 )
 
-
+#Plot the function estimated from our parameters 
 ggplot(pangoprops_input, aes(date, pangoprop)) +
   geom_point(aes(size = totn), alpha = 0.4, colour = "#2166ac") +
   geom_line(data = fit_df, aes(date, fit), linewidth = 1, colour = "#b2182b") +
@@ -131,23 +137,24 @@ $$
 $$
 Where $g$ is the generation time, in the same time units as $\beta_v$, assumed equal for both variants and a point estimate in most cases. In the multinomial model, the transmission advantage becomes  $R_t, novel\ variant/R_t, reference\ variant$
 
-
-###Example
 ```{r}
-
 deltav_fun <- function(beta, g){
   exp(beta*g)
 }
+```
 
+
+###Example
+```{r}
 #Hart, W. S. et al.,2022 gt of 5.5
 
-g <- 5.5
+g <- 5.5 #Generation time
 
 delta_b117 <- deltav_fun(beta = beta, g = g)
 
 delta_b117
 
-#B117 is 1.22 times as transmissible as circulating background variants 
+#The Rt of B.1.1.7 is 1.22 times higher than circulating background variants 
 ```
 
 #Supplementary Box 3. Multinomial growth
@@ -167,6 +174,13 @@ p_v(t) = \frac{\exp(f_{0,v} + \beta_v t)}{\sum_{k=1}^{K} \exp(f_{0,k} + \beta_k 
 $$
 Where $p_v(t)$ is the expected proportion of sequences that are variant $v$ at time $t$, and $\beta_v$ is the logistic growth rate of variant $v$ relative to the reference variant, $f_{0,v}$ and $f_{0,k}$ are the log initial frequencies of variants $v$ and $k$, respectively, relative to a reference variant, which has $\beta$ and $f_0$ set to zero. 
 
+```{r}
+Var_freq_multinomial_model <- function(f0, beta, t){
+  
+  return(exp(f0 + beta*t)/sum(exp(f0 + beta*t))) #for every f0 and beta, multiply by t 
+  
+}
+```
 
 ###Example 
 ```{r}
@@ -182,7 +196,7 @@ top_K <- pangoprops_usa %>%
   slice_max(total_seq, n = K_variants) %>%
   pull(name)
 
-#peak date for B117
+#Peak date for B117
 peak_date <- pangoprops_usa %>%
   filter(location == "USA", name == "B.1.1.7",
          date > as.Date("2020-08-20"), totn >= 50) %>%
@@ -197,7 +211,7 @@ lineages_to_show
 
 #Group all variants as other if not present in top K
 #This is the "grouping" that makes comparisons between model outputs challenging
-# "Other" was grouped in a subjective way, this is decided based on jurisdiction
+#"Other" is grouped in a subjective way.
 
 pangoprops2_input <- pangoprops_usa %>%
   filter(location == "USA", date > as.Date("2020-08-20"), date <= peak_date) %>%
@@ -222,13 +236,12 @@ pangoprops2_input %>%
 
 
 #Use nnet to estimate the parameters
-#choose B.1 as our reference variable using factor
-
+#Choose B.1 as our reference variable using factor
 multinom_fit <- multinom(name ~ t, data = (pangoprops2_input %>%
   mutate(name = relevel(factor(name), ref = "B.1"))),                       weights = sequences, 
  maxit = 1000) 
 
-#extract the parameters 
+#Extract the parameters 
 params <- data.frame(
   lineage = c("B.1", rownames(coef(multinom_fit))),
   f0_multi      = c(0, coef(multinom_fit)[, "(Intercept)"]),
@@ -236,21 +249,15 @@ params <- data.frame(
 )
 
 
-#write the multinomial function from 2b.
-multinom_fun_so_fun <- function(f0, beta, t){
-  
-  return(exp(f0 + beta*t)/sum(exp(f0 + beta*t))) #for every f0 and beta, multiply by t 
-  
-}
-
+#Time grid
 t_grid <- seq(0, max(pangoprops2_input$t, by = 1))
 
 
-#map over every value of t using the parameters nnet estimated
+#Map over every value of t using the parameters nnet estimated using the multinomial function from Supplementary Box 3
 multinom_out <- purrr::map(t_grid, ~ tibble(
     t       = .,
     lineage = params$lineage,
-    fitted  = multinom_fun_so_fun(f0 = params$f0_multi,
+    fitted  = Var_freq_multinomial_model(f0 = params$f0_multi,
                                   beta = params$beta_multi,
                                   t = .)
   )) %>%
@@ -273,9 +280,9 @@ ggplot() +
        title = "SARS-CoV-2 lineages in the USA with multinomial fit") +
   theme_minimal()
 
-#lets find the growth advantages of all the variants vs B.1 
+#Lets find the growth advantages of B.1.1.7 variants vs B.1 
 
-g <- 5.5 #generation time 
+g <- 5.5 #Generation time 
 
 delta_muti <- data.frame(delta_v = deltav_fun(params$beta_multi, g),
            variant = params$lineage)
@@ -283,6 +290,6 @@ delta_muti <- data.frame(delta_v = deltav_fun(params$beta_multi, g),
 
 delta_muti
 
-#B117 is 1.42 times more transmissible than B.1 in the multinomial model
+#The Rt of B.1.1.7 is 1.42 higher than B.1 in the multinomial model
 ```
 
